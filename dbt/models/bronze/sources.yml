@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: travel_bronze
+    database: TRAVEL_DB
+    schema: BRONZE
+    description: Raw travel data loaded into Snowflake.
+
+    tables:
+      - name: bookings
+      - name: booking_items
+      - name: booking_status_history
+      - name: categories
+      - name: vendors
+      - name: products
+      - name: offers
+      - name: packages
+      - name: customer_profile
+      - name: customer_address
+      - name: customer_tier_history
+      - name: customer_status_history
+      - name: payments
+      - name: refunds
+      - name: points_ledger

@@ -1,0 +1,28 @@
+
+name: travel_data_platform
+version: '1.0.0'
+config-version: 2
+
+profile: travel_data_platform
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  travel_data_platform:
+    +materialized: view
+
+    bronze:
+      +schema: BRONZE
+
+    silver:
+      +schema: SILVER
+
+    gold:
+      +schema: GOLD

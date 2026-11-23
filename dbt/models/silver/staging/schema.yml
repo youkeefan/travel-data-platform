@@ -1,0 +1,74 @@
+
+version: 2
+
+models:
+  - name: stg_bookings
+    columns:
+      - name: BOOKING_ID
+        data_tests:
+          - unique
+          - not_null
+      
+
+  - name: stg_booking_items
+    columns:
+      - name: BOOKING_ITEM_ID
+        data_tests:
+          - unique
+          - not_null
+
+      - name: BOOKING_ID
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_bookings')
+                field: BOOKING_ID
+
+      - name: GROSS_SALES_AUD
+        data_tests:
+          - not_null
+
+  - name: stg_customer_profile
+    columns:
+      - name: CUSTOMER_ID
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_payments
+    columns:
+      - name: PAYMENT_ID
+        data_tests:
+          - unique
+          - not_null
+      - name: PAYMENT_AMOUNT
+        data_tests:
+          - not_null
+      - name: BOOKING_ID
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_bookings')
+                field: BOOKING_ID
+
+  - name: stg_points_ledger
+    columns:
+      - name: LEDGER_ID
+        data_tests:
+          - unique
+          - not_null
+      - name: POINTS_AMOUNT
+        data_tests:
+          - not_null
+
+  - name: stg_refunds
+    columns:
+      - name: REFUND_AMOUNT
+        data_tests:
+          - not_null
+      - name: BOOKING_ID
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_bookings')
+                field: BOOKING_ID

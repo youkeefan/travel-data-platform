@@ -1,523 +1,326 @@
-
 import csv
 import json
 import random
-import shutil
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
+from datetime import datetime, timezone, timedelta
 
 random.seed(42)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-CLEAN_DATA_DIR = BASE_DIR / "data_clean"
+CLEAN_DIR = BASE_DIR / "data_clean"
 DOCS_DIR = BASE_DIR / "docs"
 
-MANIFEST_PATH = DOCS_DIR / "dirty_data_manifest_batch2.json"
-LOCK_PATH = DOCS_DIR / "dirty_data_batch2.lock"
+MANIFEST = DOCS_DIR / "dirty_data_manifest_batch2.json"
+LOCK = DOCS_DIR / "dirty_data_batch2.lock"
 
-dirty_manifest = []
+issues = []
 
-# ============================================================
-# CSV HELPERS
-# ============================================================
 
 def read_csv(filename):
-    file_path = DATA_DIR / filename
-
-    with open(file_path, "r", newline="", encoding="utf-8") as file:
-        return list(csv.DictReader(file))
+    with open(DATA_DIR / filename, encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def write_csv(filename, rows):
-    if not rows:
-        raise ValueError(f"Refusing to write empty dataset: {filename}")
-
-    file_path = DATA_DIR / filename
-    fieldnames = list(rows[0].keys())
-
-    with open(file_path, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+    with open(DATA_DIR / filename, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
 
 
-def record_issue(
-    table_name,
-    record_id,
-    column_name,
-    issue_type,
-    original_value,
-    injected_value,
-    description
-):
-    issue_id = f"DQ2{len(dirty_manifest) + 1:04d}"
-
-    dirty_manifest.append({
-        "issue_id": issue_id,
-        "table_name": table_name,
+def log_issue(table, record_id, column, issue_type, original, injected):
+    issues.append({
+        "issue_id": f"DQ2{len(issues) + 1:04d}",
+        "table": table,
         "record_id": str(record_id),
-        "column_name": column_name,
+        "column": column,
         "issue_type": issue_type,
-        "original_value": str(original_value),
-        "injected_value": str(injected_value),
-        "description": description,
-        "injected_at_utc": datetime.now(timezone.utc).isoformat()
+        "original_value": str(original),
+        "injected_value": str(injected)
     })
 
 
-def select_rows(rows, count, condition=None):
-    candidates = [
-        row for row in rows
-        if condition is None or condition(row)
-    ]
+def choose(rows, count, condition=lambda r: True):
+    candidates = [r for r in rows if condition(r)]
 
-    if count > len(candidates):
+    if len(candidates) < count:
         raise ValueError(
-            f"Requested {count} records, but only "
-            f"{len(candidates)} eligible records exist."
+            f"Not enough eligible rows: need {count}, found {len(candidates)}"
         )
 
     return random.sample(candidates, count)
 
 
-# ============================================================
-# INJECTION 1: EXACT DUPLICATES
-# ============================================================
-
-def inject_exact_duplicates(
-    filename,
-    table_name,
-    primary_key,
-    duplicate_count
-):
+# 1. Exact duplicate rows
+def inject_exact_duplicates():
+    filename = "bookings.csv"
     rows = read_csv(filename)
 
-    selected = select_rows(rows, duplicate_count)
-
-    duplicated_rows = [row.copy() for row in selected]
-
-    for row in selected:
-        record_issue(
-            table_name=table_name,
-            record_id=row[primary_key],
-            column_name="ALL_COLUMNS",
-            issue_type="exact_duplicate",
-            original_value="Original row",
-            injected_value="Duplicated row",
-            description="An exact duplicate record was added."
-        )
-
-    rows.extend(duplicated_rows)
-    write_csv(filename, rows)
-
-    print(f"{table_name}: added {duplicate_count} exact duplicates")
-
-
-# ============================================================
-# INJECTION 2: BUSINESS DUPLICATES
-# ============================================================
-
-def inject_business_duplicates(
-    filename,
-    table_name,
-    duplicate_count
-):
-    rows = read_csv(filename)
-
-    selected = select_rows(
-        rows,
-        duplicate_count,
-        condition=lambda row: row.get("BOOKING_ID", "") != ""
+    selected = choose(
+        rows, 15,
+        lambda r: r.get("BOOKING_ID", "") != ""
     )
 
-    existing_ids = {row["BOOKING_ID"] for row in rows}
-    duplicated_rows = []
+    for row in selected:
+        log_issue(
+            "BOOKINGS", row["BOOKING_ID"], "ALL_COLUMNS",
+            "exact_duplicate", "Original row", "Duplicated row"
+        )
 
-    for original_row in selected:
-        duplicate_row = original_row.copy()
+    rows.extend([r.copy() for r in selected])
+    write_csv(filename, rows)
 
-        original_id = original_row["BOOKING_ID"]
+
+# 2. Business duplicates: same booking reference, different booking ID
+def inject_business_duplicates():
+    filename = "bookings.csv"
+    rows = read_csv(filename)
+
+    selected = choose(
+        rows, 10,
+        lambda r: r.get("BOOKING_ID", "") != ""
+    )
+
+    existing_ids = {r["BOOKING_ID"] for r in rows}
+
+    for row in selected:
+        duplicate = row.copy()
+        original_id = row["BOOKING_ID"]
         new_id = f"{original_id}_DUP2"
 
-        counter = 2
         while new_id in existing_ids:
-            new_id = f"{original_id}_DUP2_{counter}"
-            counter += 1
+            new_id += "_X"
 
         existing_ids.add(new_id)
-        duplicate_row["BOOKING_ID"] = new_id
-        duplicated_rows.append(duplicate_row)
+        duplicate["BOOKING_ID"] = new_id
 
-        record_issue(
-            table_name=table_name,
-            record_id=new_id,
-            column_name="BOOKING_REFERENCE",
-            issue_type="business_duplicate",
-            original_value=original_row.get("BOOKING_REFERENCE", ""),
-            injected_value=original_row.get("BOOKING_REFERENCE", ""),
-            description=(
-                "A duplicate booking was created with a new BOOKING_ID "
-                "but the same BOOKING_REFERENCE."
-            )
+        log_issue(
+            "BOOKINGS", new_id, "BOOKING_REFERENCE",
+            "business_duplicate",
+            row["BOOKING_REFERENCE"],
+            duplicate["BOOKING_REFERENCE"]
         )
 
-    rows.extend(duplicated_rows)
+        rows.append(duplicate)
+
     write_csv(filename, rows)
 
-    print(f"{table_name}: added {duplicate_count} business duplicates")
 
-
-# ============================================================
-# INJECTION 3: MISSING VALUES
-# ============================================================
-
-def inject_missing_values(
-    filename,
-    table_name,
-    primary_key,
-    column_name,
-    missing_count
-):
+# 3. Missing email
+def inject_missing_emails():
+    filename = "customer_profile.csv"
     rows = read_csv(filename)
 
-    selected = select_rows(
-        rows,
-        missing_count,
-        condition=lambda row: row.get(column_name, "") != ""
+    selected = choose(
+        rows, 30,
+        lambda r: r.get("EMAIL", "") != ""
     )
 
     for row in selected:
-        record_id = row[primary_key]
-        original_value = row[column_name]
-        row[column_name] = ""
+        original = row["EMAIL"]
+        row["EMAIL"] = ""
 
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name=column_name,
-            issue_type="missing_value",
-            original_value=original_value,
-            injected_value="",
-            description=f"Missing value injected into {column_name}."
+        log_issue(
+            "CUSTOMER_PROFILE", row["CUSTOMER_ID"], "EMAIL",
+            "missing_value", original, ""
         )
 
     write_csv(filename, rows)
 
-    print(f"{table_name}: injected {missing_count} missing values")
 
-
-# ============================================================
-# INJECTION 4: INVALID VALUES
-# ============================================================
-
-def inject_invalid_values(
-    filename,
-    table_name,
-    primary_key,
-    column_name,
-    invalid_value,
-    invalid_count,
-    issue_type,
-    description
-):
+# 4. Negative gross sales
+def inject_negative_sales():
+    filename = "booking_items.csv"
     rows = read_csv(filename)
 
-    selected = select_rows(
-        rows,
-        invalid_count,
-        condition=lambda row: (
-            row.get(column_name, "") != ""
-            and row[column_name] != str(invalid_value)
+    selected = choose(
+        rows, 15,
+        lambda r: r.get("GROSS_SALES_AUD", "") != ""
+    )
+
+    for row in selected:
+        original = row["GROSS_SALES_AUD"]
+        row["GROSS_SALES_AUD"] = "-100"
+
+        log_issue(
+            "BOOKING_ITEMS", row["BOOKING_ITEM_ID"],
+            "GROSS_SALES_AUD", "negative_value",
+            original, "-100"
+        )
+
+    write_csv(filename, rows)
+
+
+# 5. Leading whitespace in vendor names
+def inject_vendor_whitespace():
+    filename = "vendors.csv"
+    rows = read_csv(filename)
+
+    selected = choose(
+        rows, 20,
+        lambda r: (
+            r.get("VENDOR_NAME", "") != ""
+            and r["VENDOR_NAME"] == r["VENDOR_NAME"].strip()
         )
     )
 
     for row in selected:
-        record_id = row[primary_key]
-        original_value = row[column_name]
-        row[column_name] = str(invalid_value)
+        original = row["VENDOR_NAME"]
+        row["VENDOR_NAME"] = " " + original
 
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name=column_name,
-            issue_type=issue_type,
-            original_value=original_value,
-            injected_value=invalid_value,
-            description=description
+        log_issue(
+            "VENDORS", row["VENDOR_BK"], "VENDOR_NAME",
+            "leading_whitespace", original, row["VENDOR_NAME"]
         )
 
     write_csv(filename, rows)
 
-    print(f"{table_name}: injected {invalid_count} invalid values")
 
-
-# ============================================================
-# INJECTION 5: INCONSISTENT FORMATTING
-# ============================================================
-
-def inject_inconsistent_formatting(
-    filename,
-    table_name,
-    primary_key,
-    column_name,
-    formatting_count
-):
+# 6. Broken customer foreign keys
+def inject_broken_customer_ids():
+    filename = "bookings.csv"
     rows = read_csv(filename)
 
-    selected = select_rows(
-        rows,
-        formatting_count,
-        condition=lambda row: (
-            row.get(column_name, "") != ""
-            and row[column_name] == row[column_name].strip()
+    selected = choose(
+        rows, 10,
+        lambda r: r.get("CUSTOMER_ID", "") != ""
+    )
+
+    for row in selected:
+        original = row["CUSTOMER_ID"]
+        row["CUSTOMER_ID"] = "INVALID_" + original
+
+        log_issue(
+            "BOOKINGS", row["BOOKING_ID"], "CUSTOMER_ID",
+            "broken_foreign_key", original, row["CUSTOMER_ID"]
+        )
+
+    write_csv(filename, rows)
+
+
+# 7. Checkout date before check-in date
+def inject_invalid_checkout_dates():
+    filename = "booking_items.csv"
+    rows = read_csv(filename)
+
+    def parse_date(value):
+        return datetime.strptime(value[:10], "%Y-%m-%d")
+
+    selected = choose(
+        rows, 10,
+        lambda r: (
+            r.get("CHECK_IN_DATE", "") != ""
+            and r.get("CHECK_OUT_DATE", "") != ""
         )
     )
 
     for row in selected:
-        record_id = row[primary_key]
-        original_value = row[column_name]
-        new_value = " " + original_value
+        original = row["CHECK_OUT_DATE"]
+        check_in = parse_date(row["CHECK_IN_DATE"])
 
-        row[column_name] = new_value
+        invalid_checkout = check_in - timedelta(days=5)
+        injected = invalid_checkout.strftime("%Y-%m-%d")
 
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name=column_name,
-            issue_type="inconsistent_formatting",
-            original_value=original_value,
-            injected_value=new_value,
-            description="Leading whitespace was added to the value."
+        row["CHECK_OUT_DATE"] = injected
+
+        log_issue(
+            "BOOKING_ITEMS", row["BOOKING_ITEM_ID"],
+            "CHECK_OUT_DATE", "invalid_date_range",
+            original, injected
         )
 
     write_csv(filename, rows)
 
-    print(f"{table_name}: injected {formatting_count} formatting issues")
 
+# 8. Refund greater than linked payment
+def inject_refunds_exceeding_payments():
+    refunds_file = "refunds.csv"
+    payments_file = "payments.csv"
 
-# ============================================================
-# INJECTION 6: BROKEN FOREIGN KEYS
-# ============================================================
+    refunds = read_csv(refunds_file)
+    payments = read_csv(payments_file)
 
-def inject_broken_foreign_keys(
-    filename,
-    table_name,
-    primary_key,
-    foreign_key_column,
-    issue_count
-):
-    rows = read_csv(filename)
+    payment_amounts = {}
 
-    selected = select_rows(
-        rows,
-        issue_count,
-        condition=lambda row: row.get(foreign_key_column, "") != ""
-    )
+    for payment in payments:
+        payment_id = payment.get("PAYMENT_ID", "")
+        amount = payment.get("PAYMENT_AMOUNT", "")
 
-    for row in selected:
-        record_id = row[primary_key]
-        original_value = row[foreign_key_column]
-        broken_value = f"NONEXISTENT_{original_value}"
+        if payment_id and amount:
+            try:
+                amount = float(amount)
+                if amount > 0:
+                    payment_amounts[payment_id] = amount
+            except ValueError:
+                continue
 
-        row[foreign_key_column] = broken_value
+    candidates = [
+        r for r in refunds
+        if r.get("PAYMENT_ID", "") in payment_amounts
+        and r.get("REFUND_AMOUNT", "") != ""
+    ]
 
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name=foreign_key_column,
-            issue_type="broken_foreign_key",
-            original_value=original_value,
-            injected_value=broken_value,
-            description="Foreign key references a nonexistent record."
+    selected = choose(candidates, 10)
+
+    for refund in selected:
+        payment_id = refund["PAYMENT_ID"]
+        original = refund["REFUND_AMOUNT"]
+
+        payment_amount = payment_amounts[payment_id]
+        injected = round(payment_amount + 100, 2)
+
+        refund["REFUND_AMOUNT"] = f"{injected:.2f}"
+
+        log_issue(
+            "REFUNDS", refund["REFUND_ID"], "REFUND_AMOUNT",
+            "refund_exceeds_payment", original, refund["REFUND_AMOUNT"]
         )
 
-    write_csv(filename, rows)
+    write_csv(refunds_file, refunds)
 
-    print(f"{table_name}: injected {issue_count} broken foreign keys")
-
-
-# ============================================================
-# INJECTION 7: TEMPORAL ISSUES
-# ============================================================
-
-def inject_temporal_issues(
-    filename,
-    table_name,
-    primary_key,
-    start_date_column,
-    end_date_column,
-    issue_count
-):
-    rows = read_csv(filename)
-
-    selected = select_rows(
-        rows,
-        issue_count,
-        condition=lambda row: (
-            row.get(start_date_column, "") != ""
-            and row.get(end_date_column, "") != ""
-        )
-    )
-
-    for row in selected:
-        record_id = row[primary_key]
-        original_end_date = row[end_date_column]
-
-        start_date = datetime.strptime(
-            row[start_date_column],
-            "%Y-%m-%d"
-        )
-
-        invalid_end_date = start_date - timedelta(
-            days=random.randint(1, 30)
-        )
-
-        injected_value = invalid_end_date.strftime("%Y-%m-%d")
-        row[end_date_column] = injected_value
-
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name=end_date_column,
-            issue_type="invalid_date_range",
-            original_value=original_end_date,
-            injected_value=injected_value,
-            description=(
-                f"{end_date_column} is earlier than {start_date_column}."
-            )
-        )
-
-    write_csv(filename, rows)
-
-    print(f"{table_name}: injected {issue_count} temporal issues")
-
-
-# ============================================================
-# INJECTION 8: REFUNDS EXCEED PAYMENT
-# ============================================================
-
-def inject_refund_exceeds_payment(
-    filename,
-    table_name,
-    primary_key,
-    issue_count
-):
-    rows = read_csv(filename)
-
-    selected = select_rows(
-        rows,
-        issue_count,
-        condition=lambda row: (
-            row.get("REFUND_AMOUNT", "") != ""
-            and float(row["REFUND_AMOUNT"]) > 0
-        )
-    )
-
-    for row in selected:
-        record_id = row[primary_key]
-        original_value = row["REFUND_AMOUNT"]
-
-        injected_value = round(float(original_value) * 2, 2)
-        row["REFUND_AMOUNT"] = str(injected_value)
-
-        record_issue(
-            table_name=table_name,
-            record_id=record_id,
-            column_name="REFUND_AMOUNT",
-            issue_type="refund_exceeds_original",
-            original_value=original_value,
-            injected_value=injected_value,
-            description=(
-                "Refund amount was doubled to create a financial anomaly. "
-                "Validate against the associated payment."
-            )
-        )
-
-    write_csv(filename, rows)
-
-    print(f"{table_name}: injected {issue_count} refund anomalies")
-
-
-# ============================================================
-# MANIFEST
-# ============================================================
 
 def save_manifest():
-    manifest_data = {
-        "project": "Travel Data Engineering Platform",
+    data = {
         "batch": 2,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "total_issues": len(dirty_manifest),
-        "issues": dirty_manifest
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "total_issues": len(issues),
+        "issues": issues
     }
 
-    temp_manifest = MANIFEST_PATH.with_suffix(".tmp")
+    temp_file = MANIFEST.with_suffix(".tmp")
 
-    with open(temp_manifest, "w", encoding="utf-8") as file:
-        json.dump(
-            manifest_data,
-            file,
-            indent=4,
-            ensure_ascii=False
-        )
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
 
-    temp_manifest.replace(MANIFEST_PATH)
+    temp_file.replace(MANIFEST)
 
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
-    print("=" * 60)
-    print("TRAVEL DATA - BATCH 2 DIRTY DATA INJECTION")
-    print("=" * 60)
+    if MANIFEST.exists():
+        raise FileExistsError("Batch 2 has already been run.")
 
-    # Safety checks
-    if MANIFEST_PATH.exists():
-        raise FileExistsError(
-            f"Batch 2 manifest already exists: {MANIFEST_PATH}"
-        )
+    if LOCK.exists():
+        raise FileExistsError("Batch 2 lock file exists.")
 
-    if LOCK_PATH.exists():
-        raise FileExistsError(
-            f"Batch 2 lock already exists: {LOCK_PATH}"
-        )
-
-    if not DATA_DIR.exists():
-        raise FileNotFoundError(f"Data directory not found: {DATA_DIR}")
-
-    # Batch 1 clean backup must remain untouched
-    if not list(CLEAN_DATA_DIR.glob("*.csv")):
-        raise FileNotFoundError(
-            "Original clean backups are missing. Injection stopped."
-        )
+    if not CLEAN_DIR.exists():
+        raise FileNotFoundError("data_clean backup is missing.")
 
     required_files = [
         "bookings.csv",
         "booking_items.csv",
         "customer_profile.csv",
         "vendors.csv",
-        "refunds.csv"
+        "refunds.csv",
+        "payments.csv"
     ]
 
-    missing_files = [
-        filename for filename in required_files
-        if not (DATA_DIR / filename).exists()
-    ]
+    for filename in required_files:
+        if not (DATA_DIR / filename).exists():
+            raise FileNotFoundError(f"Missing file: {filename}")
 
-    if missing_files:
-        raise FileNotFoundError(
-            "Missing required files: " + ", ".join(missing_files)
-        )
-
-    # Snapshot affected CSV files in memory for rollback
-    snapshot_files = [
+    # Backup the files that Batch 2 will modify, in memory.
+    modified_files = [
         "bookings.csv",
         "booking_items.csv",
         "customer_profile.csv",
@@ -525,113 +328,45 @@ def main():
         "refunds.csv"
     ]
 
-    snapshots = {
+    backups = {
         filename: (DATA_DIR / filename).read_bytes()
-        for filename in snapshot_files
+        for filename in modified_files
     }
 
-    # Create Batch 2 lock
-    LOCK_PATH.write_text(
-        datetime.now(timezone.utc).isoformat(),
-        encoding="utf-8"
-    )
+    with open(LOCK, "x", encoding="utf-8") as f:
+        f.write("Batch 2 running")
 
     try:
-        print("\nStarting injections...\n")
+        inject_exact_duplicates()
+        inject_business_duplicates()
+        inject_missing_emails()
+        inject_negative_sales()
+        inject_vendor_whitespace()
+        inject_broken_customer_ids()
+        inject_invalid_checkout_dates()
+        inject_refunds_exceeding_payments()
 
-        # 1. Exact duplicates in bookings
-        inject_exact_duplicates(
-            filename="bookings.csv",
-            table_name="BOOKINGS",
-            primary_key="BOOKING_ID",
-            duplicate_count=15
-        )
-
-        # 2. Business duplicates in bookings
-        inject_business_duplicates(
-            filename="bookings.csv",
-            table_name="BOOKINGS",
-            duplicate_count=10
-        )
-
-        # 3. Missing email values
-        inject_missing_values(
-            filename="customer_profile.csv",
-            table_name="CUSTOMER_PROFILE",
-            primary_key="CUSTOMER_ID",
-            column_name="EMAIL",
-            missing_count=30
-        )
-
-        # 4. Negative gross sales
-        inject_invalid_values(
-            filename="booking_items.csv",
-            table_name="BOOKING_ITEMS",
-            primary_key="BOOKING_ITEM_ID",
-            column_name="GROSS_SALES_AUD",
-            invalid_value="-100",
-            invalid_count=15,
-            issue_type="negative_gross_sales",
-            description="Gross sales cannot be negative."
-        )
-
-        # 5. Vendor name formatting issues
-        inject_inconsistent_formatting(
-            filename="vendors.csv",
-            table_name="VENDORS",
-            primary_key="VENDOR_BK",
-            column_name="VENDOR_NAME",
-            formatting_count=20
-        )
-
-        # 6. Broken booking customer references
-        inject_broken_foreign_keys(
-            filename="bookings.csv",
-            table_name="BOOKINGS",
-            primary_key="BOOKING_ID",
-            foreign_key_column="CUSTOMER_ID",
-            issue_count=10
-        )
-
-        # 7. Invalid check-out dates
-        inject_temporal_issues(
-            filename="booking_items.csv",
-            table_name="BOOKING_ITEMS",
-            primary_key="BOOKING_ITEM_ID",
-            start_date_column="CHECK_IN_DATE",
-            end_date_column="CHECK_OUT_DATE",
-            issue_count=10
-        )
-
-        # 8. Refund financial anomalies
-        inject_refund_exceeds_payment(
-            filename="refunds.csv",
-            table_name="REFUNDS",
-            primary_key="REFUND_ID",
-            issue_count=10
-        )
-
-        # Save manifest only after all injections succeed
         save_manifest()
 
-        print("\n" + "=" * 60)
-        print("BATCH 2 INJECTION COMPLETED")
-        print("=" * 60)
-        print(f"Total issues injected: {len(dirty_manifest)}")
-        print(f"Manifest: {MANIFEST_PATH}")
+        print("Batch 2 injection completed!")
+        print(f"Total dirty data injected: {len(issues)}")
+        print(f"Manifest saved: {MANIFEST}")
 
     except Exception:
-        print("\nERROR: Batch 2 failed. Attempting rollback...")
+        print("Error detected. Restoring modified CSV files...")
 
-        for filename, content in snapshots.items():
+        for filename, content in backups.items():
             (DATA_DIR / filename).write_bytes(content)
 
-        print("Rollback attempted for all affected CSV files.")
+        if MANIFEST.exists():
+            MANIFEST.unlink()
+
+        print("Rollback completed.")
         raise
 
     finally:
-        if LOCK_PATH.exists():
-            LOCK_PATH.unlink()
+        if LOCK.exists():
+            LOCK.unlink()
 
 
 if __name__ == "__main__":

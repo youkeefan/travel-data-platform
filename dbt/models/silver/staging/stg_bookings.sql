@@ -1,0 +1,61 @@
+
+WITH source AS (
+
+    SELECT *
+    FROM {{ source('travel_bronze', 'bookings') }}
+
+),
+
+cleaned AS (
+
+    SELECT
+        TRIM(BOOKING_ID) AS BOOKING_ID,
+        TRIM(BOOKING_REFERENCE) AS BOOKING_REFERENCE,
+        TRIM(CUSTOMER_ID) AS CUSTOMER_ID,
+
+        TRY_TO_TIMESTAMP_NTZ(BOOKING_CREATED_AT_UTC)
+            AS BOOKING_CREATED_AT_UTC,
+        
+        CASE
+            WHEN TRY_TO_TIMESTAMP_NTZ(BOOKING_CREATED_AT_UTC) IS NULL
+                THEN FALSE
+            ELSE TRUE
+        END AS IS_VALID_BOOKING_DATE,
+
+        TRY_TO_TIMESTAMP_NTZ(BOOKING_CREATED_AT_SYD)
+            AS BOOKING_CREATED_AT_SYD,
+
+        UPPER(TRIM(BOOKING_STATUS)) AS BOOKING_STATUS,
+        UPPER(TRIM(CHANNEL)) AS CHANNEL,
+        UPPER(TRIM(COUNTRY_CODE)) AS COUNTRY_CODE,
+        UPPER(TRIM(CURRENCY_CODE)) AS CURRENCY_CODE,
+
+        TRY_TO_TIMESTAMP_NTZ(UPDATED_AT_UTC)
+            AS UPDATED_AT_UTC
+
+    FROM source
+
+),
+
+deduplicated AS (
+
+    SELECT *
+    FROM cleaned
+    WHERE REGEXP_LIKE(BOOKING_ID, 'B[0-9]{6}')
+
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY BOOKING_REFERENCE
+        ORDER BY
+            CASE
+                WHEN REGEXP_LIKE(BOOKING_ID, 'B[0-9]{6}')
+                    THEN 0
+                ELSE 1
+            END,
+            UPDATED_AT_UTC DESC NULLS LAST,
+            BOOKING_ID
+    ) = 1
+
+)
+
+SELECT *
+FROM deduplicated
