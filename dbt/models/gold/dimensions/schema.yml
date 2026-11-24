@@ -1,0 +1,368 @@
+version: 2
+
+models:
+  - name: dim_customer
+    description: >
+      SCD Type 1 customer dimension containing demographic,
+      geographic, loyalty and customer tenure attributes.
+      One row per customer.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('core_customer')
+
+    columns:
+      - name: customer_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        description: Original customer business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: age
+        description: Customer age at the latest model refresh.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 120
+              config:
+                severity: warn
+
+      - name: tenure_days
+        description: Number of days since customer registration.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+              config:
+                severity: warn
+
+      - name: age_band
+        description: Customer age segmentation.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Under 18'
+                  - '18-24'
+                  - '25-34'
+                  - '35-44'
+                  - '45-54'
+                  - '55-64'
+                  - '65+'
+                  - 'Unknown'
+
+      - name: tenure_band
+        description: Customer tenure segmentation.
+        data_tests:
+          - not_null
+
+      - name: tier_name
+        description: Current customer loyalty tier.
+        data_tests:
+          - not_null
+
+      - name: customer_status
+        description: Current customer status.
+        data_tests:
+          - not_null
+
+  - name: dim_date
+    description: >
+      Continuous calendar dimension supporting calendar,
+      ISO week and Australian financial year reporting.
+      One row per calendar date from 2020 to 2035.
+
+    data_tests:
+      - dbt_expectations.expect_table_row_count_to_equal:
+          arguments:
+            value: 5844
+
+    columns:
+      - name: date_key
+        description: Integer date key in YYYYMMDD format.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: full_date
+        description: Calendar date.
+        data_tests:
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              arguments:
+                column_type: DATE
+          - dbt_utils.sequential_values:
+              arguments:
+                interval: 1
+                datepart: day
+
+      - name: month_number
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 12
+
+      - name: financial_quarter
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+
+      - name: day_of_week
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                max_value: 7
+
+      - name: is_weekend
+        data_tests:
+          - not_null
+
+      - name: is_weekday
+        data_tests:
+          - not_null
+
+  - name: dim_category
+    description: >
+      Travel product category dimension supporting
+      category-level sales, margin and loyalty analysis.
+      One row per category.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_categories')
+
+    columns:
+      - name: category_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: category_bk
+        description: Original category business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: category_name
+        description: Travel product category name.
+        data_tests:
+          - not_null
+
+      - name: category_group
+        description: Higher-level category classification.
+        data_tests:
+          - not_null
+
+  - name: dim_vendor
+    description: >
+      Vendor dimension supporting supplier performance,
+      geographic analysis and commercial reporting.
+      One row per vendor.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_vendors')
+
+    columns:
+      - name: vendor_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: vendor_bk
+        description: Original vendor business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: vendor_name
+        description: Vendor or supplier name.
+        data_tests:
+          - not_null
+
+      - name: vendor_country
+        description: Country where the vendor is based.
+        data_tests:
+          - not_null
+
+      - name: vendor_status
+        description: Current vendor operational status.
+        data_tests:
+          - not_null
+
+  - name: dim_product
+    description: >
+      Product dimension supporting product-level commercial
+      analysis and relationships with category and vendor
+      dimensions. One row per product.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_products')
+
+    columns:
+      - name: product_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_bk
+        description: Original product business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        data_tests:
+          - not_null
+
+      - name: category_key
+        description: Foreign key referencing dim_category.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category_key
+
+      - name: vendor_key
+        description: Foreign key referencing dim_vendor.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_vendor')
+                field: vendor_key
+
+      - name: product_status
+        data_tests:
+          - not_null
+
+  - name: dim_offer
+    description: >
+      Promotional offer dimension supporting discount analysis,
+      campaign performance and offer lifecycle reporting.
+      One row per offer.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_offers')
+
+      - dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B:
+          arguments:
+            column_A: end_date
+            column_B: start_date
+            or_equal: true
+
+    columns:
+      - name: offer_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: offer_bk
+        description: Original offer business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: offer_name
+        data_tests:
+          - not_null
+
+      - name: offer_type
+        data_tests:
+          - not_null
+
+      - name: discount_amount
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: offer_duration_days
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: offer_lifecycle_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'UNKNOWN'
+                  - 'UPCOMING'
+                  - 'CURRENT'
+                  - 'EXPIRED'
+
+      - name: offer_status
+        data_tests:
+          - not_null
+
+  - name: dim_package
+    description: >
+      Travel package dimension supporting package-level
+      sales, margin and commercial performance analysis.
+      One row per package.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_packages')
+
+    columns:
+      - name: package_key
+        description: Deterministic surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: package_bk
+        description: Original package business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: package_name
+        description: Travel package name.
+        data_tests:
+          - not_null
+
+      - name: package_type
+        description: Travel package classification.
+        data_tests:
+          - not_null
+
+      - name: created_at_utc
+        description: Package creation timestamp.
+        data_tests:
+          - not_null
+
+      - name: updated_at_utc
+        description: Latest package update timestamp.
+        data_tests:
+          - not_null
