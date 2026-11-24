@@ -1,0 +1,30 @@
+SELECT
+    'ADDRESS' AS RECORD_TYPE,
+    CUSTOMER_ID,
+    COUNT(*) AS CURRENT_RECORD_COUNT
+FROM {{ ref('stg_customer_address') }}
+WHERE IS_CURRENT = TRUE
+GROUP BY CUSTOMER_ID
+HAVING COUNT(*) > 1
+
+UNION ALL
+
+SELECT
+    'TIER',
+    CUSTOMER_ID,
+    COUNT(*)
+FROM {{ ref('stg_customer_tier_history') }}
+WHERE IS_CURRENT = TRUE
+GROUP BY CUSTOMER_ID
+HAVING COUNT(*) > 1
+
+UNION ALL
+
+SELECT
+    'STATUS',
+    CUSTOMER_ID,
+    COUNT(*)
+FROM {{ ref('stg_customer_status_history') }}
+WHERE IS_CURRENT = TRUE
+GROUP BY CUSTOMER_ID
+HAVING COUNT(*) > 1

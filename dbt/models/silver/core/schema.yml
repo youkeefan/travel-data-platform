@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: core_customer
+    description: >
+      Integrated current-state customer entity combining
+      customer profile, address, loyalty tier and status.
+      One row per customer.
+
+    columns:
+      - name: customer_id
+        description: Unique customer business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: has_current_address
+        description: Indicates whether a current address exists.
+        data_tests:
+          - not_null
+
+      - name: has_current_tier
+        description: Indicates whether a current loyalty tier exists.
+        data_tests:
+          - not_null
+
+      - name: has_current_status
+        description: Indicates whether a current customer status exists.
+        data_tests:
+          - not_null

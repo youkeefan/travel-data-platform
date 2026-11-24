@@ -15,6 +15,9 @@ WITH cleaned AS (
         {% elif name in ['UPDATED_AT_UTC'] %}
         TRY_TO_TIMESTAMP_NTZ(NULLIF(TRIM({{ adapter.quote(col.name) }}), ''))
             AS {{ adapter.quote(col.name) }}
+        {% elif name in ['IS_CURRENT'] %}
+        TRY_TO_BOOLEAN(NULLIF(TRIM({{ adapter.quote(col.name) }}), ''))
+            AS {{ adapter.quote(col.name) }}
         {% else %}
         NULLIF(TRIM({{ adapter.quote(col.name) }}), '')
             AS {{ adapter.quote(col.name) }}
