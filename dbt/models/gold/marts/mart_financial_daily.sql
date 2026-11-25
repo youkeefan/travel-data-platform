@@ -1,0 +1,194 @@
+{{ config(materialized='table') }}
+
+WITH payments AS (
+
+    SELECT
+        PAYMENT_DATE_KEY AS DATE_KEY,
+        CURRENCY_CODE,
+
+        COUNT(*) AS TOTAL_PAYMENT_COUNT,
+
+        COUNT_IF(PAYMENT_STATUS = 'SUCCESSFUL')
+            AS SUCCESSFUL_PAYMENT_COUNT,
+
+        COUNT_IF(PAYMENT_STATUS = 'FAILED')
+            AS FAILED_PAYMENT_COUNT,
+
+        COUNT_IF(PAYMENT_STATUS = 'PENDING')
+            AS PENDING_PAYMENT_COUNT,
+
+        SUM(PAYMENT_AMOUNT)
+            AS TOTAL_PAYMENT_AMOUNT,
+
+        SUM(SUCCESSFUL_PAYMENT_AMOUNT)
+            AS SUCCESSFUL_PAYMENT_AMOUNT
+
+    FROM {{ ref('fact_payments') }}
+
+    GROUP BY 1, 2
+
+),
+
+refunds AS (
+
+    SELECT
+        REFUND_DATE_KEY AS DATE_KEY,
+        CURRENCY_CODE,
+
+        COUNT(*) AS TOTAL_REFUND_COUNT,
+
+        COUNT_IF(REFUND_STATUS = 'COMPLETED')
+            AS COMPLETED_REFUND_COUNT,
+
+        COUNT_IF(REFUND_STATUS = 'FAILED')
+            AS FAILED_REFUND_COUNT,
+
+        COUNT_IF(REFUND_STATUS = 'PENDING')
+            AS PENDING_REFUND_COUNT,
+
+        COUNT_IF(
+            IS_COMPLETED_REFUND = TRUE
+            AND IS_VALID_REFUND = TRUE
+        ) AS VALIDATED_COMPLETED_REFUND_COUNT,
+
+        SUM(REFUND_AMOUNT)
+            AS TOTAL_REFUND_AMOUNT,
+
+        SUM(COMPLETED_REFUND_AMOUNT)
+            AS COMPLETED_REFUND_AMOUNT,
+
+        SUM(VALIDATED_COMPLETED_REFUND_AMOUNT)
+            AS VALIDATED_COMPLETED_REFUND_AMOUNT
+
+    FROM {{ ref('fact_refunds') }}
+
+    GROUP BY 1, 2
+
+),
+
+combined AS (
+
+    SELECT
+        COALESCE(p.DATE_KEY, r.DATE_KEY)
+            AS DATE_KEY,
+
+        COALESCE(p.CURRENCY_CODE, r.CURRENCY_CODE)
+            AS CURRENCY_CODE,
+
+        -- Payment metrics
+        COALESCE(p.TOTAL_PAYMENT_COUNT, 0)
+            AS TOTAL_PAYMENT_COUNT,
+
+        COALESCE(p.SUCCESSFUL_PAYMENT_COUNT, 0)
+            AS SUCCESSFUL_PAYMENT_COUNT,
+
+        COALESCE(p.FAILED_PAYMENT_COUNT, 0)
+            AS FAILED_PAYMENT_COUNT,
+
+        COALESCE(p.PENDING_PAYMENT_COUNT, 0)
+            AS PENDING_PAYMENT_COUNT,
+
+        COALESCE(p.TOTAL_PAYMENT_AMOUNT, 0)
+            AS TOTAL_PAYMENT_AMOUNT,
+
+        COALESCE(p.SUCCESSFUL_PAYMENT_AMOUNT, 0)
+            AS SUCCESSFUL_PAYMENT_AMOUNT,
+
+        -- Refund metrics
+        COALESCE(r.TOTAL_REFUND_COUNT, 0)
+            AS TOTAL_REFUND_COUNT,
+
+        COALESCE(r.COMPLETED_REFUND_COUNT, 0)
+            AS COMPLETED_REFUND_COUNT,
+
+        COALESCE(r.FAILED_REFUND_COUNT, 0)
+            AS FAILED_REFUND_COUNT,
+
+        COALESCE(r.PENDING_REFUND_COUNT, 0)
+            AS PENDING_REFUND_COUNT,
+
+        COALESCE(r.VALIDATED_COMPLETED_REFUND_COUNT, 0)
+            AS VALIDATED_COMPLETED_REFUND_COUNT,
+
+        COALESCE(r.TOTAL_REFUND_AMOUNT, 0)
+            AS TOTAL_REFUND_AMOUNT,
+
+        COALESCE(r.COMPLETED_REFUND_AMOUNT, 0)
+            AS COMPLETED_REFUND_AMOUNT,
+
+        COALESCE(r.VALIDATED_COMPLETED_REFUND_AMOUNT, 0)
+            AS VALIDATED_COMPLETED_REFUND_AMOUNT
+
+    FROM payments p
+
+    FULL OUTER JOIN refunds r
+        ON p.DATE_KEY = r.DATE_KEY
+        AND p.CURRENCY_CODE = r.CURRENCY_CODE
+
+),
+
+final AS (
+
+    SELECT
+        {{ dbt_utils.generate_surrogate_key([
+            'a.DATE_KEY',
+            'a.CURRENCY_CODE'
+        ]) }} AS FINANCIAL_DAILY_KEY,
+
+        -- Date attributes
+        a.DATE_KEY,
+        d.FULL_DATE AS TRANSACTION_DATE,
+        d.CALENDAR_YEAR,
+        d.CALENDAR_QUARTER,
+        d.MONTH_NUMBER,
+        d.YEAR_MONTH,
+        d.FINANCIAL_YEAR,
+        d.FINANCIAL_QUARTER,
+
+        -- Currency
+        a.CURRENCY_CODE,
+
+        -- Payment metrics
+        a.TOTAL_PAYMENT_COUNT,
+        a.SUCCESSFUL_PAYMENT_COUNT,
+        a.FAILED_PAYMENT_COUNT,
+        a.PENDING_PAYMENT_COUNT,
+        a.TOTAL_PAYMENT_AMOUNT,
+        a.SUCCESSFUL_PAYMENT_AMOUNT,
+
+        -- Refund metrics
+        a.TOTAL_REFUND_COUNT,
+        a.COMPLETED_REFUND_COUNT,
+        a.FAILED_REFUND_COUNT,
+        a.PENDING_REFUND_COUNT,
+        a.VALIDATED_COMPLETED_REFUND_COUNT,
+        a.TOTAL_REFUND_AMOUNT,
+        a.COMPLETED_REFUND_AMOUNT,
+        a.VALIDATED_COMPLETED_REFUND_AMOUNT,
+
+        -- Financial KPIs
+        a.SUCCESSFUL_PAYMENT_AMOUNT
+            - a.VALIDATED_COMPLETED_REFUND_AMOUNT
+            AS NET_CASH_MOVEMENT,
+
+        ROUND(
+            a.SUCCESSFUL_PAYMENT_COUNT
+            / NULLIF(a.TOTAL_PAYMENT_COUNT, 0),
+            6
+        ) AS PAYMENT_SUCCESS_RATE,
+
+        ROUND(
+            a.VALIDATED_COMPLETED_REFUND_AMOUNT
+            / NULLIF(a.SUCCESSFUL_PAYMENT_AMOUNT, 0),
+            6
+        ) AS REFUND_TO_PAYMENT_RATIO
+
+    FROM combined a
+
+    LEFT JOIN {{ ref('dim_date') }} d
+        ON a.DATE_KEY = d.DATE_KEY
+
+)
+
+SELECT *
+FROM final

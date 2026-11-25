@@ -1,0 +1,612 @@
+version: 2
+
+models:
+  - name: mart_commercial_daily
+    description: >
+      Daily commercial performance at transaction date
+      and product grain. Includes only booking items
+      with positive gross sales. Unknown products are
+      retained. Product attributes reflect current
+      dimension values.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - transaction_date_key
+              - product_key
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              GROSS_MARGIN_RATE =
+              ROUND(GROSS_MARGIN_AUD /
+              NULLIF(GROSS_SALES_AUD, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              AVG_BOOKING_ITEM_VALUE_AUD =
+              ROUND(GROSS_SALES_AUD /
+              NULLIF(BOOKING_ITEM_COUNT, 0), 2)
+
+    columns:
+      - name: commercial_daily_key
+        description: Unique surrogate key for date and product.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: transaction_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: transaction_date
+        data_tests:
+          - not_null
+
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
+
+      - name: gross_sales_aud
+        description: Total positive gross sales in AUD.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false
+
+      - name: gross_margin_aud
+        data_tests:
+          - not_null
+
+      - name: booking_item_count
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: distinct_booking_count
+        description: >
+          Distinct bookings within each date and product.
+          Non-additive across dates and products.
+        data_tests:
+          - not_null
+
+      - name: distinct_customer_count
+        description: >
+          Distinct known customers within each date and
+          product. Non-additive across dates and products.
+        data_tests:
+          - not_null
+
+      - name: gross_margin_rate
+        description: >
+          Gross margin divided by gross sales.
+          Recalculate from aggregated amounts rather
+          than averaging individual rates.
+        data_tests:
+          - not_null
+
+      - name: avg_booking_item_value_aud
+        description: >
+          Gross sales divided by booking item count.
+          Recalculate when aggregating across rows.
+        data_tests:
+          - not_null
+
+  - name: mart_customer_360
+    description: >
+      Customer-level analytical mart combining current
+      customer attributes, historical commercial performance
+      and validated loyalty activity. Includes known customers
+      without purchases and excludes the UNKNOWN customer.
+      Commercial metrics include positive gross sales only.
+
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "CUSTOMER_KEY <> 'UNKNOWN'"
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              HAS_PURCHASED = (TOTAL_BOOKINGS > 0)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              IS_REPEAT_CUSTOMER = (TOTAL_BOOKINGS > 1)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              PURCHASE_SEGMENT =
+              CASE
+                WHEN TOTAL_BOOKINGS = 0
+                  THEN 'No Purchase'
+                WHEN TOTAL_BOOKINGS = 1
+                  THEN 'Single Purchase'
+                ELSE 'Repeat Customer'
+              END
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              AVG_BOOKING_VALUE_AUD IS NOT DISTINCT FROM
+              ROUND(LIFETIME_GROSS_SALES_AUD /
+              NULLIF(TOTAL_BOOKINGS, 0), 2)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              GROSS_MARGIN_RATE IS NOT DISTINCT FROM
+              ROUND(LIFETIME_GROSS_MARGIN_AUD /
+              NULLIF(LIFETIME_GROSS_SALES_AUD, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              NET_POINTS_MOVEMENT =
+              TOTAL_POINTS_EARNED
+              - TOTAL_POINTS_REDEEMED
+              - TOTAL_POINTS_EXPIRED
+              + TOTAL_POINTS_ADJUSTED
+              + TOTAL_POINTS_REVERSED
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              TOTAL_BOOKINGS <= TOTAL_BOOKING_ITEMS
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              TOTAL_BOOKINGS > 0 OR
+              (FIRST_PURCHASE_DATE IS NULL
+              AND LAST_PURCHASE_DATE IS NULL
+              AND RECENCY_DAYS IS NULL
+              AND LIFETIME_GROSS_SALES_AUD = 0)
+
+    columns:
+      - name: customer_key
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: customer_id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: total_bookings
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: total_booking_items
+        data_tests:
+          - not_null
+
+      - name: lifetime_gross_sales_aud
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: lifetime_gross_margin_aud
+        data_tests:
+          - not_null
+
+      - name: total_points_earned
+        data_tests:
+          - not_null
+
+      - name: total_points_redeemed
+        data_tests:
+          - not_null
+
+      - name: total_points_expired
+        data_tests:
+          - not_null
+
+      - name: total_points_adjusted
+        data_tests:
+          - not_null
+
+      - name: total_points_reversed
+        data_tests:
+          - not_null
+
+      - name: net_points_movement
+        description: >
+          Validated net points movement through the Sydney
+          calendar date at build time. Does not represent
+          an independently verified outstanding balance.
+        data_tests:
+          - not_null
+
+      - name: total_loyalty_events
+        data_tests:
+          - not_null
+
+      - name: purchase_segment
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'No Purchase'
+                  - 'Single Purchase'
+                  - 'Repeat Customer'
+
+      - name: has_purchased
+        data_tests:
+          - not_null
+
+      - name: is_repeat_customer
+        data_tests:
+          - not_null
+
+  - name: mart_loyalty_monthly
+    description: >
+      Monthly loyalty performance at month and customer
+      grain. Includes validated points movements for known
+      customers and excludes future events. Customer attributes
+      reflect current dimension values. Only months with
+      qualifying loyalty activity are included.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - month_start_date
+              - customer_key
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "CUSTOMER_KEY <> 'UNKNOWN'"
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              NET_POINTS_MOVEMENT =
+              POINTS_EARNED
+              - POINTS_REDEEMED
+              - POINTS_EXPIRED
+              + POINTS_ADJUSTED
+              + POINTS_REVERSED
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              EARN_TO_BURN_RATIO IS NOT DISTINCT FROM
+              ROUND(POINTS_EARNED /
+              NULLIF(POINTS_REDEEMED, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              REDEMPTION_TO_EARN_RATIO IS NOT DISTINCT FROM
+              ROUND(POINTS_REDEEMED /
+              NULLIF(POINTS_EARNED, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              MONTH_START_DATE =
+              DATE_TRUNC('MONTH', MONTH_START_DATE)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "HAS_EARNED = (POINTS_EARNED > 0)"
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "HAS_REDEEMED = (POINTS_REDEEMED > 0)"
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "HAS_EXPIRED = (POINTS_EXPIRED > 0)"
+
+    columns:
+      - name: loyalty_monthly_key
+        description: Unique surrogate key for month and customer.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: month_start_date
+        data_tests:
+          - not_null
+
+      - name: month_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: loyalty_event_count
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+
+      - name: points_earned
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: points_redeemed
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: points_expired
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: points_adjusted
+        description: Signed credit and debit adjustments.
+        data_tests:
+          - not_null
+
+      - name: points_reversed
+        description: Signed reversals of original movements.
+        data_tests:
+          - not_null
+
+      - name: net_points_movement
+        description: Validated monthly net points movement.
+        data_tests:
+          - not_null
+
+      - name: cumulative_points_movement
+        description: >
+          Running total of validated net points movement
+          by customer. Non-additive across months.
+          Does not represent a verified outstanding balance.
+        data_tests:
+          - not_null
+
+      - name: earn_to_burn_ratio
+        description: >
+          Points earned divided by points redeemed.
+          NULL when redeemed points equal zero.
+          Recalculate from aggregated points.
+
+      - name: redemption_to_earn_ratio
+        description: >
+          Points redeemed divided by points earned.
+          NULL when earned points equal zero.
+          Recalculate from aggregated points.
+
+      - name: has_earned
+        data_tests:
+          - not_null
+
+      - name: has_redeemed
+        data_tests:
+          - not_null
+
+      - name: has_expired
+        data_tests:
+          - not_null
+
+  - name: mart_financial_daily
+    description: >
+      Daily financial transaction performance at date
+      and currency grain. Includes payment-only and
+      refund-only dates. Monetary amounts remain in
+      their original transaction currencies.
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date_key
+              - currency_code
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              TOTAL_PAYMENT_COUNT =
+              SUCCESSFUL_PAYMENT_COUNT
+              + FAILED_PAYMENT_COUNT
+              + PENDING_PAYMENT_COUNT
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              TOTAL_REFUND_COUNT =
+              COMPLETED_REFUND_COUNT
+              + FAILED_REFUND_COUNT
+              + PENDING_REFUND_COUNT
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              VALIDATED_COMPLETED_REFUND_COUNT
+              <= COMPLETED_REFUND_COUNT
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              NET_CASH_MOVEMENT =
+              SUCCESSFUL_PAYMENT_AMOUNT
+              - VALIDATED_COMPLETED_REFUND_AMOUNT
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              PAYMENT_SUCCESS_RATE IS NOT DISTINCT FROM
+              ROUND(SUCCESSFUL_PAYMENT_COUNT /
+              NULLIF(TOTAL_PAYMENT_COUNT, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              REFUND_TO_PAYMENT_RATIO IS NOT DISTINCT FROM
+              ROUND(VALIDATED_COMPLETED_REFUND_AMOUNT /
+              NULLIF(SUCCESSFUL_PAYMENT_AMOUNT, 0), 6)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              TOTAL_PAYMENT_COUNT + TOTAL_REFUND_COUNT > 0
+
+    columns:
+      - name: financial_daily_key
+        description: Unique surrogate key for date and currency.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: transaction_date
+        data_tests:
+          - not_null
+
+      - name: currency_code
+        description: Original transaction currency.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - AUD
+                  - GBP
+                  - NZD
+                  - SGD
+
+      - name: total_payment_count
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: successful_payment_count
+        data_tests:
+          - not_null
+
+      - name: failed_payment_count
+        data_tests:
+          - not_null
+
+      - name: pending_payment_count
+        data_tests:
+          - not_null
+
+      - name: total_payment_amount
+        data_tests:
+          - not_null
+
+      - name: successful_payment_amount
+        data_tests:
+          - not_null
+
+      - name: total_refund_count
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: completed_refund_count
+        data_tests:
+          - not_null
+
+      - name: failed_refund_count
+        data_tests:
+          - not_null
+
+      - name: pending_refund_count
+        data_tests:
+          - not_null
+
+      - name: validated_completed_refund_count
+        data_tests:
+          - not_null
+
+      - name: total_refund_amount
+        data_tests:
+          - not_null
+
+      - name: completed_refund_amount
+        data_tests:
+          - not_null
+
+      - name: validated_completed_refund_amount
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: net_cash_movement
+        description: >
+          Successful payment amount minus validated completed
+          refund amount. Not recognised revenue or verified
+          bank settlement. Aggregate within currency only.
+        data_tests:
+          - not_null
+
+      - name: payment_success_rate
+        description: >
+          Successful payments divided by total payments.
+          NULL when no payments exist.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+      - name: refund_to_payment_ratio
+        description: >
+          Validated completed refund amount divided by
+          successful payment amount within the same period
+          and currency. Recalculate from aggregated amounts.
