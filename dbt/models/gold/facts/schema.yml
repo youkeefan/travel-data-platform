@@ -1,0 +1,664 @@
+version: 2
+
+models:
+  - name: fact_bookings
+    description: >
+      Booking-level fact table supporting booking volume,
+      customer behaviour and channel performance analysis.
+      One row per booking.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_bookings')
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (CUSTOMER_KEY = 'UNKNOWN' AND HAS_VALID_CUSTOMER = FALSE)
+              OR
+              (CUSTOMER_KEY <> 'UNKNOWN' AND HAS_VALID_CUSTOMER = TRUE)
+
+    columns:
+      - name: booking_key
+        description: Deterministic booking surrogate key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: booking_id
+        description: Original booking business key.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: customer_key
+        description: Foreign key referencing dim_customer.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: booking_date_key
+        description: Sydney local booking date foreign key.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: booking_count
+        description: Additive measure for booking volume.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+      - name: booking_status
+        data_tests:
+          - not_null
+
+      - name: has_valid_customer
+        data_tests:
+          - not_null
+
+      - name: is_valid_booking_date
+        data_tests:
+          - not_null
+
+      - name: has_valid_date_key
+        data_tests:
+          - not_null
+
+  - name: fact_booking_items
+    description: >
+      Booking item fact table supporting commercial performance,
+      product analysis, sales, margin and discount reporting.
+      One row per booking item.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_booking_items')
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (PRODUCT_KEY = 'UNKNOWN' AND HAS_VALID_PRODUCT = FALSE)
+              OR
+              (PRODUCT_KEY <> 'UNKNOWN' AND HAS_VALID_PRODUCT = TRUE)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (SELECT SUM(GROSS_SALES_AUD)
+               FROM {{ ref('fact_booking_items') }})
+              =
+              (SELECT SUM(GROSS_SALES_AUD)
+               FROM {{ ref('stg_booking_items') }})
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (SELECT SUM(GROSS_MARGIN_AUD)
+               FROM {{ ref('fact_booking_items') }})
+              =
+              (SELECT SUM(GROSS_MARGIN_AUD)
+               FROM {{ ref('stg_booking_items') }})
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (SELECT SUM(DISCOUNT_AUD)
+               FROM {{ ref('fact_booking_items') }})
+              =
+              (SELECT SUM(DISCOUNT_AUD)
+               FROM {{ ref('stg_booking_items') }})
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (SELECT SUM(REFUND_AUD)
+               FROM {{ ref('fact_booking_items') }})
+              =
+              (SELECT SUM(REFUND_AUD)
+               FROM {{ ref('stg_booking_items') }})
+
+    columns:
+      - name: booking_item_key
+        data_tests:
+          - unique
+          - not_null
+
+      - name: booking_item_id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: booking_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_bookings')
+                field: booking_key
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: transaction_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
+
+      - name: category_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category_key
+
+      - name: vendor_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_vendor')
+                field: vendor_key
+
+      - name: offer_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_offer')
+                field: offer_key
+
+      - name: package_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_package')
+                field: package_key
+
+      - name: gross_sales_aud
+        data_tests:
+          - not_null
+
+      - name: booking_item_count
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+      - name: has_valid_customer
+        data_tests:
+          - not_null
+
+      - name: has_valid_product
+        data_tests:
+          - not_null
+
+      - name: has_valid_date_key
+        data_tests:
+          - not_null
+
+
+  - name: fact_refunds
+    description: >
+      Refund transaction fact table supporting refund performance,
+      financial reconciliation and business rule validation.
+      One row per refund.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_refunds')
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              COMPLETED_REFUND_AMOUNT =
+              CASE WHEN IS_COMPLETED_REFUND
+              THEN REFUND_AMOUNT ELSE 0 END
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              VALIDATED_COMPLETED_REFUND_AMOUNT =
+              CASE WHEN IS_COMPLETED_REFUND AND IS_VALID_REFUND
+              THEN REFUND_AMOUNT ELSE 0 END
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              IS_VALID_REFUND_AMOUNT = (REFUND_AMOUNT > 0)
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              IS_VALID_REFUND = COALESCE(
+                IS_VALID_REFUND_AMOUNT
+                AND IS_BOOKING_CONSISTENT
+                AND IS_CURRENCY_CONSISTENT
+                AND NOT IS_OVER_REFUND
+                AND IS_SUCCESSFUL_PAYMENT
+                AND IS_VALID_REFUND_TIMING,
+                FALSE
+              )
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_REFUND_AMOUNT = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_BOOKING_CONSISTENT = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_CURRENCY_CONSISTENT = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_OVER_REFUND = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_SUCCESSFUL_PAYMENT = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_REFUND_TIMING = TRUE"
+          config:
+            severity: warn
+
+    columns:
+      - name: refund_key
+        data_tests:
+          - unique
+          - not_null
+
+      - name: refund_id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: booking_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_bookings')
+                field: booking_key
+
+      - name: payment_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_payments')
+                field: payment_key
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: refund_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: refund_amount
+        data_tests:
+          - not_null
+
+      - name: completed_refund_amount
+        data_tests:
+          - not_null
+
+      - name: validated_completed_refund_amount
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+
+      - name: refund_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['COMPLETED', 'PENDING', 'FAILED']
+
+      - name: currency_code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['AUD', 'GBP', 'NZD', 'SGD']
+
+      - name: refund_count
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+      - name: is_completed_refund
+        data_tests:
+          - not_null
+
+      - name: is_valid_refund_amount
+        data_tests:
+          - not_null
+
+      - name: is_booking_consistent
+        data_tests:
+          - not_null
+
+      - name: is_currency_consistent
+        data_tests:
+          - not_null
+
+      - name: is_successful_payment
+        data_tests:
+          - not_null
+
+      - name: is_valid_refund_timing
+        data_tests:
+          - not_null
+
+      - name: has_valid_customer
+        data_tests:
+          - not_null
+
+      - name: has_valid_date_key
+        data_tests:
+          - not_null
+
+      - name: is_valid_refund
+        data_tests:
+          - not_null
+
+  - name: fact_points_ledger
+    description: >
+      Loyalty points transaction fact table supporting points
+      earn, redemption, expiry, adjustments, reversals
+      and net points movement analysis.
+      One row per ledger event.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_points_ledger')
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              VALIDATED_POINTS_MOVEMENT =
+              CASE WHEN IS_VALID_POINTS_MOVEMENT
+              THEN SIGNED_POINTS_MOVEMENT ELSE 0 END
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              CURRENT_POINTS_MOVEMENT =
+              CASE WHEN IS_VALID_POINTS_MOVEMENT
+              AND NOT IS_FUTURE_EVENT
+              AND HAS_VALID_DATE_KEY
+              THEN SIGNED_POINTS_MOVEMENT ELSE 0 END
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              IS_VALID_POINTS_MOVEMENT = COALESCE(
+                IS_VALID_EVENT_TYPE
+                AND IS_VALID_POINTS_AMOUNT
+                AND IS_VALID_ADJUSTMENT_DIRECTION
+                AND IS_VALID_REVERSAL_REFERENCE
+                AND NOT IS_DUPLICATE_REVERSAL
+                AND SIGNED_POINTS_MOVEMENT IS NOT NULL,
+                FALSE
+              )
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_EVENT_TYPE = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_POINTS_AMOUNT = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_ADJUSTMENT_DIRECTION = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_VALID_REVERSAL_REFERENCE = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_DUPLICATE_REVERSAL = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_FUTURE_EVENT = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "HAS_VALID_CUSTOMER = TRUE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_UNMATCHED_BOOKING = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_UNMATCHED_BOOKING_ITEM = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_BOOKING_CUSTOMER_MISMATCH = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_ITEM_CUSTOMER_MISMATCH = FALSE"
+          config:
+            severity: warn
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "IS_BOOKING_ITEM_MISMATCH = FALSE"
+          config:
+            severity: warn
+
+    columns:
+      - name: ledger_key
+        data_tests:
+          - unique
+          - not_null
+
+      - name: ledger_id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: booking_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fact_bookings')
+                field: booking_key
+
+      - name: booking_item_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fact_booking_items')
+                field: booking_item_key
+
+      - name: event_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: expiry_date_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: event_type
+        data_tests:
+          - not_null
+
+      - name: points_amount
+        data_tests:
+          - not_null
+
+      - name: validated_points_movement
+        data_tests:
+          - not_null
+
+      - name: current_points_movement
+        data_tests:
+          - not_null
+
+      - name: event_count
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+      - name: is_valid_event_type
+        data_tests:
+          - not_null
+
+      - name: is_valid_points_amount
+        data_tests:
+          - not_null
+
+      - name: is_valid_adjustment_direction
+        data_tests:
+          - not_null
+
+      - name: is_valid_reversal_reference
+        data_tests:
+          - not_null
+
+      - name: is_duplicate_reversal
+        data_tests:
+          - not_null
+
+      - name: is_valid_points_movement
+        data_tests:
+          - not_null
+
+      - name: has_valid_customer
+        data_tests:
+          - not_null
+
+      - name: is_unmatched_booking
+        data_tests:
+          - not_null
+
+      - name: is_unmatched_booking_item
+        data_tests:
+          - not_null
+
+      - name: is_booking_customer_mismatch
+        data_tests:
+          - not_null
+
+      - name: is_item_customer_mismatch
+        data_tests:
+          - not_null
+
+      - name: is_booking_item_mismatch
+        data_tests:
+          - not_null
+
+      - name: has_valid_date_key
+        data_tests:
+          - not_null
+
+      - name: is_future_event
+        data_tests:
+          - not_null

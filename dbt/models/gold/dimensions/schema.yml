@@ -8,9 +8,16 @@ models:
       One row per customer.
 
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - dbt_utils.expression_is_true:
           arguments:
-            compare_model: ref('core_customer')
+            expression: >
+              (SELECT COUNT(*) FROM {{ ref('dim_customer') }})
+              =
+              (SELECT COUNT(*) FROM {{ ref('core_customer') }}) + 1
+      - dbt_expectations.expect_table_row_count_to_equal:
+          arguments:
+            value: 1
+            row_condition: "CUSTOMER_KEY = 'UNKNOWN' AND CUSTOMER_ID = 'UNKNOWN'"
 
     columns:
       - name: customer_key
@@ -215,9 +222,17 @@ models:
       dimensions. One row per product.
 
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - dbt_utils.expression_is_true:
           arguments:
-            compare_model: ref('stg_products')
+            expression: >
+              (SELECT COUNT(*) FROM {{ ref('dim_product') }})
+              =
+              (SELECT COUNT(*) FROM {{ ref('stg_products') }}) + 1
+
+      - dbt_expectations.expect_table_row_count_to_equal:
+          arguments:
+            value: 1
+            row_condition: "PRODUCT_KEY = 'UNKNOWN' AND PRODUCT_BK = 'UNKNOWN'"
 
     columns:
       - name: product_key
@@ -239,7 +254,10 @@ models:
       - name: category_key
         description: Foreign key referencing dim_category.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "PRODUCT_KEY <> 'UNKNOWN'"
+
           - relationships:
               arguments:
                 to: ref('dim_category')
@@ -248,7 +266,10 @@ models:
       - name: vendor_key
         description: Foreign key referencing dim_vendor.
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                where: "PRODUCT_KEY <> 'UNKNOWN'"
+
           - relationships:
               arguments:
                 to: ref('dim_vendor')
@@ -366,3 +387,115 @@ models:
         description: Latest package update timestamp.
         data_tests:
           - not_null
+
+  - name: fact_payments
+    description: >
+      Payment transaction fact table supporting payment performance,
+      payment success rates and currency-level financial analysis.
+      One row per payment.
+
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_payments')
+
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (PAYMENT_STATUS = 'SUCCESSFUL'
+               AND IS_SUCCESSFUL_PAYMENT = TRUE
+               AND SUCCESSFUL_PAYMENT_AMOUNT = PAYMENT_AMOUNT)
+              OR
+              (PAYMENT_STATUS <> 'SUCCESSFUL'
+               AND IS_SUCCESSFUL_PAYMENT = FALSE
+               AND SUCCESSFUL_PAYMENT_AMOUNT = 0)
+
+    columns:
+      - name: payment_key
+        data_tests:
+          - unique
+          - not_null
+
+      - name: payment_id
+        data_tests:
+          - unique
+          - not_null
+
+      - name: booking_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_bookings')
+                field: booking_key
+
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+
+      - name: payment_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+      - name: payment_amount
+        data_tests:
+          - not_null
+
+      - name: successful_payment_amount
+        data_tests:
+          - not_null
+
+      - name: payment_method
+        data_tests:
+          - not_null
+
+      - name: payment_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['SUCCESSFUL', 'PENDING', 'FAILED']
+
+      - name: currency_code
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['AUD', 'GBP', 'NZD', 'SGD']
+
+      - name: payment_count
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1]
+                quote: false
+
+      - name: is_successful_payment
+        data_tests:
+          - not_null
+
+      - name: has_valid_customer
+        data_tests:
+          - not_null
+
+      - name: has_valid_date_key
+        data_tests:
+          - not_null
+
+      - name: is_currency_consistent
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true]
+                quote: false
+
