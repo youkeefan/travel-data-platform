@@ -1,0 +1,50 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local credentials and private keys
+profiles.yml
+connections.toml
+*.p8
+*.pem
+*.key
+.snowflake/
+.aws/
+
+# Allow CI/CD profile templates
+!/dbt/ci/profiles.yml
+!/dbt/cd/profiles.yml
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# dbt generated files
+logs/
+target/
+dbt_packages/
+.user.yml
+
+# Generated datasets
+/data/
+/data_clean/
+/data_test/
+*.csv
+
+# Temporary batch markers
+batch*_done.txt
+
+# Temporary documentation files
+/docs/*.lock

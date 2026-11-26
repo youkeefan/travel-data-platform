@@ -1,0 +1,68 @@
+name: Travel Data Platform CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dbt/**'
+      - '.github/workflows/travel-cd.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: travel-platform-prod
+  cancel-in-progress: false
+
+jobs:
+  dbt-cd:
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment: production
+
+    defaults:
+      run:
+        working-directory: dbt
+
+    env:
+      DBT_RUN_CACHE_DISABLED: "true"
+      DBT_ENV_SECRET_PROD_PASSPHRASE: ${{ secrets.SNOWFLAKE_PROD_KEY_PASSPHRASE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install dbt
+        run: |
+          pip install dbt-core==1.12.7 dbt-snowflake==1.12.5
+
+      - name: Configure Snowflake private key
+        env:
+          SNOWFLAKE_PROD_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PROD_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$SNOWFLAKE_PROD_PRIVATE_KEY" > "$RUNNER_TEMP/travel_prod_private.p8"
+          echo "SNOWFLAKE_PROD_PRIVATE_KEY_PATH=$RUNNER_TEMP/travel_prod_private.p8" >> "$GITHUB_ENV"
+
+      - name: Install dbt packages
+        run: dbt deps --profiles-dir cd
+
+      - name: Test production connection
+        run: dbt debug --profiles-dir cd --target prod
+
+      - name: Deploy and test production models
+        run: dbt build --profiles-dir cd --target prod
+
+      - name: Remove private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/travel_prod_private.p8"
