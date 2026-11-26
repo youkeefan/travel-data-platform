@@ -1,347 +1,1044 @@
+
 # Travel Data Platform
 
-An end-to-end data engineering project simulating a production-style travel e-commerce data platform, covering automated data ingestion, cloud data warehousing, data transformation, dimensional modelling, data quality management and CI/CD.
+An end-to-end cloud data engineering platform designed to simulate a modern travel e-commerce data ecosystem using AWS, Snowflake, dbt, Python and GitHub Actions.
+
+The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control and CI/CD deployment.
+
+---
 
 ## 1. Project Overview
 
-The platform integrates synthetic travel booking, customer, product, payment, refund and loyalty data into a centralised Snowflake data warehouse.
+The Travel Data Platform processes synthetic travel transaction, customer, product, payment and loyalty data into reliable, analytics-ready datasets.
 
-The project demonstrates how raw operational data can be transformed into reliable, analytics-ready datasets through a scalable, modular and environment-separated data architecture.
+The project follows an ELT architecture, where source data is extracted and loaded into a cloud data warehouse before being transformed into curated analytical models.
 
 ### Project Objectives
 
-- Build an end-to-end cloud-based ELT pipeline.
-- Automate file ingestion using AWS and Snowflake.
-- Implement a Bronze, Silver and Gold data architecture.
-- Develop reusable and modular dbt transformation models.
-- Implement dimensional modelling and historical customer tracking.
-- Detect and quarantine invalid data.
-- Establish separate development, testing and production environments.
-- Automate testing and deployment through CI/CD.
-- Implement role-based access control and secure authentication.
+- Build a scalable cloud-based data platform.
+- Establish isolated DEV, CI and PROD environments.
+- Implement automated ingestion using AWS S3 and Snowpipe.
+- Develop a Bronze, Silver and Gold data architecture.
+- Implement reusable and modular dbt transformation models.
+- Manage data quality through automated testing and validation.
+- Apply dimensional modelling and Slowly Changing Dimensions.
+- Implement secure, automated CI/CD deployment.
+- Establish traceability, documentation and data lineage.
+- Enable reliable downstream business intelligence and analytics.
+
+---
 
 ## 2. Technology Stack
 
 | Technology | Purpose |
 |---|---|
-| Python | Synthetic data generation, dirty data simulation and ingestion automation |
-| AWS S3 | Cloud object storage |
-| AWS IAM | Cloud access and permission management |
-| Amazon SQS | Event notifications for automated ingestion |
-| Snowpipe | Automated data ingestion |
-| Snowflake | Cloud data warehouse |
-| SQL | Data transformation and business logic |
-| dbt Core | ELT modelling, testing and dependency management |
+| Python | Synthetic data generation, dirty data injection and ingestion utilities |
+| AWS S3 | Cloud object storage and ingestion landing zone |
+| AWS IAM | Secure AWS resource access |
+| Snowpipe | Automated file ingestion |
+| Snowflake | Cloud data warehouse and compute |
+| SQL | Data transformation and analytical modelling |
+| dbt Core | Transformation, testing, documentation and lineage |
 | Git | Version control |
-| GitHub | Source code management |
-| GitHub Actions | Automated CI/CD |
-| RSA Key Pair | Secure Snowflake service account authentication |
-| YAML | Model, source, test and workflow configuration |
+| GitHub | Source code management and collaboration |
+| GitHub Actions | Continuous integration and deployment |
+| VS Code | Local development environment |
+| YAML | Configuration, source definitions and data tests |
+
+---
 
 ## 3. System Architecture
 
 ```mermaid
 flowchart TD
-    A[Synthetic Travel Data] --> B[Python Ingestion]
-    B --> C[AWS S3]
-    C --> D[Amazon SQS]
-    D --> E[Snowpipe]
-    C --> E
-    E --> F[Snowflake Bronze]
-    F --> G[dbt Silver]
-    G --> H[dbt Gold]
-    G --> I[Data Quality and Quarantine]
-    H --> J[Business Analytics]
-    K[GitHub Actions] --> L[CI Environment]
-    K --> M[Production Deployment]
-    M --> G
+    A[Python Synthetic Data Generator]
+    B[CSV Source Data]
+    C[Dirty Data Injection]
+    D[AWS S3 Landing Zone]
+    E[Snowpipe]
+    F[Snowflake Bronze Layer]
+    G[dbt Silver Layer]
+    H[dbt Gold Layer]
+    I[Business Intelligence and Analytics]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+
+    J[GitHub Repository]
+    K[GitHub Actions CI/CD]
+    L[DEV Environment]
+    M[CI Environment]
+    N[PROD Environment]
+
+    J --> K
+    J --> L
+    K --> M
+    M -->|Successful Validation and Merge| N
 ```
 
-The platform follows an ELT architecture, loading raw data into Snowflake before applying transformations using dbt.
+### Architectural Principles
 
-## 4. Data Architecture
+- Environment isolation
+- Separation of storage and compute
+- ELT-based processing
+- Layered data architecture
+- Modular and reusable transformations
+- Data quality by design
+- Least-privilege access
+- Automated validation and deployment
+- Reproducibility and traceability
 
-### Bronze Layer — Raw Data
+---
 
-The Bronze layer contains 15 raw source tables representing operational travel business data.
+## 4. Environment Management
 
-Source domains include:
+The platform uses three isolated Snowflake environments to separate development, automated validation and production workloads.
 
-- Bookings and booking items
-- Booking status history
-- Customer profiles and addresses
-- Customer tier and status history
-- Products, categories, offers and packages
-- Payments and refunds
-- Loyalty points transactions
+### 4.1 Environment Configuration
 
-Raw data is ingested through AWS S3 and Snowpipe, providing a foundation for downstream transformations.
-
-### Silver Layer — Data Transformation
-
-The Silver layer contains 21 dbt views covering staging, intermediate transformations, customer consolidation and data quality management.
-
-Key transformation processes include:
-
-- Data type standardisation
-- Deduplication
-- Null value handling
-- Referential integrity validation
-- Customer profile consolidation
-- Historical tier and status management
-- Financial record validation
-- Date consistency checks
-- Invalid record identification and quarantine
-
-### Gold Layer — Analytics and Business Modelling
-
-The Gold layer contains 16 materialised tables, including fact tables, dimension tables and analytical marts.
-
-Business modelling covers:
-
-- Booking and transaction analysis
-- Customer analytics
-- Payment and refund analysis
-- Commercial performance
-- Revenue and margin reporting
-- Loyalty analytics
-- Daily commercial performance reporting
-
-The Gold layer provides structured, analytics-ready datasets for downstream reporting and business intelligence.
-
-## 5. Data Quality Management
-
-The platform incorporates intentionally corrupted synthetic data to simulate real-world operational data quality challenges.
-
-Data quality scenarios include:
-
-- Duplicate records
-- Missing foreign keys
-- Invalid data types
-- Invalid booking dates
-- Negative financial amounts
-- Duplicate transaction references
-- Invalid customer email addresses
-- Missing postcodes
-- Overlapping customer tier and status periods
-- Refund amount and currency inconsistencies
-- Cumulative over-refunding
-
-Data quality controls are implemented using dbt generic tests, singular SQL tests and business validation rules.
-
-### Test Severity
-
-| Severity | Behaviour |
-|---|---|
-| ERROR | Fails the dbt build and prevents successful CI execution |
-| WARN | Identifies data quality exceptions without failing the build |
-
-Invalid records are identified through dedicated quarantine and validation models.
-
-### Latest Production Build
-
-| Metric | Result |
-|---|---:|
-| Source tables | 15 |
-| Silver views | 21 |
-| Gold tables | 16 |
-| Total dbt models | 37 |
-| Data tests | 387 |
-| Total executed nodes | 424 |
-| Passed nodes | 413 |
-| Warnings | 11 |
-| Errors | 0 |
-| Skipped nodes | 0 |
-
-The warning-level results demonstrate the platform's ability to identify data quality exceptions while allowing non-blocking issues to be reported.
-
-## 6. Environment Management
-
-Three separate Snowflake environments support development, automated testing and production deployment.
-
-| Environment | Database | Role |
+| Environment | Database | Purpose |
 |---|---|---|
-| DEV | TRAVEL_DEV_DB | TRAVEL_DEV_ROLE |
-| CI | TRAVEL_CI_DB | TRAVEL_CI_ROLE |
-| PROD | TRAVEL_DB | TRAVEL_PROD_ROLE |
+| DEV | TRAVEL_DEV_DB | Local development and model testing |
+| CI | TRAVEL_CI_DB | Automated pull request validation |
+| PROD | TRAVEL_DB | Production deployment and analytical consumption |
 
-Each environment contains its own Silver and Gold transformation objects.
+### 4.2 Schema Architecture
 
-The production Bronze layer serves as the shared raw data source.
+| Layer | DEV | CI | PROD |
+|---|---|---|---|
+| Bronze | Shared source access | Shared source access | Physical source tables |
+| Silver | Views | Views | Views |
+| Gold | Tables | Tables | Tables |
+
+DEV and CI use controlled access to the existing Bronze source data while maintaining isolated transformation outputs.
+
+This design avoids unnecessary duplication of raw data while ensuring that development and CI workloads cannot modify production transformation models.
+
+### 4.3 Environment Promotion
+
+```mermaid
+flowchart LR
+    A[Feature Branch]
+    B[DEV Development]
+    C[Pull Request]
+    D[CI Validation]
+    E[Merge to Main]
+    F[PROD Deployment]
+
+    A --> B --> C --> D --> E --> F
+```
+
+Changes are developed and tested in DEV, automatically validated in CI and deployed to PROD following a successful merge.
+
+---
+
+## 5. Security and Access Control
+
+Security is established before pipeline and transformation development.
+
+### 5.1 Snowflake RBAC
+
+The platform uses role-based access control to separate development, CI and production deployment responsibilities.
+
+Access permissions are assigned according to the principle of least privilege.
+
+| Responsibility | Access Scope |
+|---|---|
+| Development | Development models and required source data |
+| CI validation | CI transformation objects and read-only source access |
+| Production deployment | Production transformation objects |
+| Data consumption | Approved analytical datasets |
+
+The CI service account is restricted to the permissions required for automated validation.
+
+CI workloads must not create, modify or delete production transformation objects.
+
+### 5.2 AWS IAM
+
+AWS IAM manages access to S3 and the resources required for automated data ingestion.
+
+Security considerations include:
+
+- Restricted S3 bucket access.
+- Controlled storage integration permissions.
+- Separation of AWS and Snowflake authentication.
+- Avoidance of hardcoded credentials.
+- Least-privilege access policies.
+
+### 5.3 Secrets Management
+
+Sensitive credentials are managed through environment variables, local configuration and GitHub Actions secrets.
+
+Credentials must not be committed to the repository.
+
+Examples include:
+
+- Snowflake account credentials.
+- Service account authentication information.
+- AWS access credentials.
+- Environment-specific connection settings.
+
+---
+
+## 6. Data Domain
+
+The platform simulates a travel e-commerce business covering customer activity, travel bookings, financial transactions, product information and loyalty membership.
+
+### Core Business Domains
+
+| Domain | Data Entities |
+|---|---|
+| Customers | Customer profiles and addresses |
+| Customer Lifecycle | Customer status and membership tier history |
+| Bookings | Booking headers and booking items |
+| Products | Travel products and categories |
+| Vendors | Travel suppliers and vendor information |
+| Payments | Payment transactions |
+| Refunds | Refund transactions |
+| Loyalty | Points earning and redemption transactions |
+
+### Business Use Cases
+
+The analytical layer supports use cases including:
+
+- Booking performance analysis.
+- Gross sales and gross margin reporting.
+- Customer segmentation.
+- Customer lifecycle analysis.
+- Membership tier progression.
+- Payment and refund reconciliation.
+- Product and vendor performance.
+- Loyalty points earning and redemption analysis.
+- Customer-level commercial performance.
+
+---
+
+## 7. Data Ingestion
+
+### 7.1 Synthetic Data Generation
+
+Python generates synthetic relational datasets representing realistic travel business transactions.
+
+The generated datasets include:
+
+- Primary and foreign key relationships.
+- Customer and booking identifiers.
+- Transaction timestamps.
+- Product and vendor relationships.
+- Financial transaction values.
+- Historical customer attributes.
+- Loyalty points transactions.
+
+Synthetic data allows the platform to demonstrate engineering practices without exposing real customer or commercial information.
+
+### 7.2 Dirty Data Injection
+
+Controlled data quality issues are introduced to simulate realistic upstream data problems.
+
+A consolidated Python script supports four batches of data quality scenarios.
+
+| Batch | Data Quality Scenarios |
+|---|---|
+| Batch 1 | Missing values, duplicates and invalid business values |
+| Batch 2 | Business duplicates, broken foreign keys, formatting issues, invalid date ranges and financial anomalies |
+| Batch 3 | Additional invalid values and duplicate records |
+| Batch 4 | Invalid numeric, date and timestamp data types |
+
+Individual batches can be executed using:
+
+```bash
+python inject_dirty_data.py --batch 1
+python inject_dirty_data.py --batch 2
+python inject_dirty_data.py --batch 3
+python inject_dirty_data.py --batch 4
+```
+
+To execute all batches sequentially against a fresh dataset:
+
+```bash
+python inject_dirty_data.py --batch all
+```
+
+The script retains the original batch-specific random seeds, manifests, backup logic and existing execution safeguards.
+
+Dirty data injection must only be performed against disposable synthetic datasets.
+
+Previously processed datasets must not be reinjected.
+
+### 7.3 AWS S3 Landing Zone
+
+AWS S3 serves as the cloud landing zone for source CSV files.
+
+Python ingestion utilities upload generated datasets to S3 using the AWS SDK.
+
+The landing zone decouples source file generation from warehouse ingestion.
+
+### 7.4 Automated Snowpipe Ingestion
+
+Snowpipe loads source files from S3 into Snowflake Bronze tables.
+
+The ingestion architecture supports:
+
+- Automated file ingestion.
+- Asynchronous loading.
+- Separation of ingestion and transformation.
+- File-level load history.
+- Investigation of ingestion failures.
+
+Snowpipe handles source file loading, while dbt manages downstream transformations.
+
+---
+
+## 8. Medallion Architecture
+
+The platform follows a three-layer Bronze, Silver and Gold architecture.
+
+```mermaid
+flowchart LR
+    A[AWS S3]
+    B[BRONZE<br/>Raw Source Data]
+    C[SILVER<br/>Cleaned and Validated Data]
+    D[GOLD<br/>Analytics-Ready Data]
+    E[BI and Analytics]
+
+    A --> B --> C --> D --> E
+```
+
+### 8.1 Bronze Layer
+
+The Bronze layer stores raw source data ingested from S3.
+
+Responsibilities include:
+
+- Preserving source records.
+- Retaining raw values for investigation.
+- Supporting downstream reprocessing.
+- Providing a consistent source for transformation.
+- Maintaining separation between ingestion and business logic.
+
+Bronze data is stored as physical Snowflake tables.
+
+Data quality issues are intentionally retained at this layer.
+
+### 8.2 Silver Layer
+
+The Silver layer transforms raw source data into standardised and validated datasets.
+
+Transformation responsibilities include:
+
+- Data type conversion.
+- String standardisation.
+- Whitespace removal.
+- Null handling.
+- Duplicate detection and removal.
+- Primary key validation.
+- Foreign key validation.
+- Accepted value validation.
+- Date range validation.
+- Financial value validation.
+- Identification of invalid source records.
+
+Snowflake TRY conversion functions support defensive transformation of malformed source values.
+
+Silver models are implemented primarily as dbt views.
+
+The Silver layer separates source data quality handling from downstream analytical business logic.
+
+### 8.3 Gold Layer
+
+The Gold layer contains curated datasets designed for reporting and analytical consumption.
+
+Responsibilities include:
+
+- Dimensional modelling.
+- Fact and dimension construction.
+- Business metric calculation.
+- Historical customer analysis.
+- Financial and transactional aggregation.
+- Customer and loyalty analytics.
+
+Gold models are materialised as Snowflake tables.
+
+This provides a stable analytical interface for downstream consumers.
+
+---
+
+## 9. Data Modelling
+
+### 9.1 Dimensional Modelling
+
+The Gold layer applies dimensional modelling principles to separate measurable business events from descriptive business attributes.
+
+Fact models represent transactional and measurable events, including:
+
+- Bookings.
+- Booking items.
+- Payments.
+- Refunds.
+- Loyalty points transactions.
+
+Dimension models provide descriptive context, including:
+
+- Customers.
+- Products.
+- Vendors.
+- Product categories.
+- Customer membership attributes.
+
+Model grain and key relationships are considered during development to reduce duplication and incorrect aggregation.
+
+### 9.2 Slowly Changing Dimensions
+
+The platform incorporates historical customer attributes through Slowly Changing Dimension concepts.
+
+#### SCD Type 1
+
+Type 1 modelling represents the latest available customer attributes.
+
+Typical use cases include:
+
+- Current customer profile information.
+- Updated contact information.
+- Current customer attributes.
+
+#### SCD Type 2
+
+Type 2 modelling preserves historical changes through effective date ranges.
+
+Typical use cases include:
+
+- Membership tier history.
+- Customer status history.
+- Historical address information.
+
+Historical records support point-in-time analysis and customer lifecycle reporting.
+
+### 9.3 Business Metrics
+
+The analytical layer supports calculation and analysis of:
+
+- Gross sales.
+- Gross margin.
+- Booking volume.
+- Payment amounts.
+- Refund amounts.
+- Customer transaction activity.
+- Loyalty points earned.
+- Loyalty points redeemed.
+- Membership tier activity.
+
+Business calculations are centralised within transformation models to improve consistency and reusability.
+
+---
+
+## 10. Data Quality Framework
+
+Data quality is integrated throughout the transformation lifecycle.
+
+The platform uses dbt generic tests and custom SQL tests to validate structural integrity, business rules and relationships.
+
+### 10.1 Structural Validation
+
+- Primary key uniqueness.
+- Required field completeness.
+- Foreign key relationships.
+- Accepted categorical values.
+- Valid data types.
+
+### 10.2 Business Rule Validation
+
+- Non-negative financial values where applicable.
+- Valid booking date ranges.
+- Valid membership tiers.
+- Valid transaction statuses.
+- Refund amounts relative to associated payments.
+- Valid customer and product relationships.
+
+### 10.3 Historical Data Validation
+
+- Effective date consistency.
+- Historical customer attribute integrity.
+- Valid membership tier history.
+- Valid customer status history.
+
+### 10.4 Data Quality Severity
+
+Data quality tests distinguish between critical failures and warning-level issues.
+
+| Severity | Purpose |
+|---|---|
+| Error | Prevent successful validation when a critical rule fails |
+| Warning | Surface issues that require investigation without automatically blocking deployment |
+
+This allows the platform to distinguish deployment-blocking defects from expected or non-critical data quality observations.
+
+### 10.5 Test Execution
+
+Run all models and associated tests:
+
+```bash
+dbt build
+```
+
+Run data tests independently:
+
+```bash
+dbt test
+```
+
+Run tests for a selected model:
+
+```bash
+dbt test --select model_name
+```
+
+---
+
+## 11. CI/CD
+
+CI/CD is established early in the project lifecycle and expanded as transformation models and data quality requirements grow.
+
+GitHub Actions automates validation and production deployment.
+
+### 11.1 Continuous Integration
+
+CI is triggered through the pull request workflow.
+
+The CI process includes:
+
+1. Check out the repository.
+2. Configure the Python environment.
+3. Install required dependencies.
+4. Configure Snowflake authentication.
+5. Resolve dbt dependencies.
+6. Execute dbt models and tests in the CI environment.
+7. Report validation results.
+
+CI uses the isolated TRAVEL_CI_DB environment.
+
+Production transformation objects are not modified during pull request validation.
 
 ```mermaid
 flowchart TD
-    A[TRAVEL_DB.BRONZE] --> B[DEV Silver]
-    A --> C[CI Silver]
-    A --> D[PROD Silver]
-    B --> E[DEV Gold]
-    C --> F[CI Gold]
-    D --> G[PROD Gold]
+    A[Pull Request]
+    B[GitHub Actions]
+    C[Install Dependencies]
+    D[Configure CI Credentials]
+    E[dbt Build - CI]
+    F{Validation Successful?}
+    G[CI Passed]
+    H[CI Failed]
+    I[Fix and Push Changes]
+
+    A --> B --> C --> D --> E --> F
+    F -->|Yes| G
+    F -->|No| H --> I --> A
 ```
 
-This architecture supports independent development and automated testing without requiring duplicate raw data ingestion.
+### 11.2 Continuous Deployment
 
-## 7. CI/CD Pipeline
+CD is triggered following changes merged into the main branch.
 
-GitHub Actions automates model validation and production deployment.
+The deployment workflow:
 
-### Continuous Integration
+1. Checks out the merged code.
+2. Configures production authentication.
+3. Installs required dependencies.
+4. Executes dbt models and tests against PROD.
+5. Reports deployment results.
 
-The CI workflow is triggered by pull requests and performs:
+The production deployment command is:
 
-- Python environment configuration
-- dbt dependency installation
-- Snowflake authentication
-- CI environment connection validation
-- dbt model execution
-- Automated data quality testing
-
-CI transformations are executed in TRAVEL_CI_DB.
-
-### Continuous Deployment
-
-The CD workflow is triggered by changes merged into the main branch and performs:
-
-- Production environment authentication
-- Production connection validation
-- dbt model deployment
-- Production data quality testing
-
-Production deployment uses the dbt production target.
-
-```mermaid
-flowchart TD
-    A[Feature Branch] --> B[Pull Request]
-    B --> C[GitHub Actions CI]
-    C --> D{CI Passed?}
-    D -->|No| E[Fix Code and Retest]
-    E --> C
-    D -->|Yes| F[Merge to Main]
-    F --> G[GitHub Actions CD]
-    G --> H[Snowflake Production]
+```bash
+dbt build --profiles-dir cd --target prod
 ```
 
-### Branch Protection
+Production models are deployed into TRAVEL_DB.
 
-The main branch is protected through GitHub branch protection rules and required CI status checks.
+### 11.3 Deployment Controls
 
-Intentional CI failure testing was performed to validate the failure-handling process.
+The deployment design incorporates:
 
-## 8. Security and Access Control
+- Environment-specific dbt targets.
+- Isolated CI transformation objects.
+- Environment-specific authentication.
+- Restricted CI permissions.
+- Automated data quality validation.
+- Git-based change history.
+- Pull request-based development.
 
-The platform implements Snowflake role-based access control to separate development, testing and production responsibilities.
+### 11.4 CI Failure Handling
 
-Security controls include:
+The CI workflow reports unsuccessful builds when critical validation fails.
 
-- Dedicated environment roles
-- Dedicated CI service account
-- Environment-specific compute resources
-- RSA key-pair authentication
-- GitHub Secrets for sensitive credentials
-- Restricted CI write privileges
-- Read-only CI access to production Bronze data
-- Existing and future grant management
-- Removal of unnecessary backup database permissions
+Failed changes should be investigated and corrected in the feature branch before being merged.
 
-The security architecture follows the principle of least privilege.
+Intentional CI failure testing has been performed to validate the failure-handling behaviour.
 
-## 9. Repository Structure
+---
 
-```text
-travel-data-platform/
-├── .github/
-│   └── workflows/
-│       ├── travel-ci.yml
-│       └── travel-cd.yml
-├── dbt/
-│   ├── models/
-│   │   ├── silver/
-│   │   └── gold/
-│   ├── tests/
-│   └── dbt_project.yml
-├── ingestion/
-│   └── src/
-├── snowflake/
-├── docs/
-├── generate_travel_data.py
-├── generate_test_files.py
-├── inject_dirty_data.py
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
+## 12. Development and Implementation Workflow
 
-## 10. Local Development
+The platform follows an environment-first engineering approach.
 
-### Prerequisites
+Infrastructure, security and basic deployment automation are established before full pipeline development.
+
+### Phase 1 — Requirements and Architecture
+
+- Define business domains and analytical requirements.
+- Identify source entities and relationships.
+- Establish model grain and data contracts.
+- Design the cloud ingestion architecture.
+- Define Bronze, Silver and Gold responsibilities.
+- Select the technology stack.
+
+### Phase 2 — Repository and Development Foundation
+
+- Initialise the Git repository.
+- Establish the project directory structure.
+- Configure Python virtual environments.
+- Define dependency management.
+- Configure Git ignore rules.
+- Initialise the dbt project.
+- Establish configuration and documentation conventions.
+
+### Phase 3 — Environment and Security Setup
+
+- Provision DEV, CI and PROD databases.
+- Configure required schemas and compute resources.
+- Establish Snowflake roles and service accounts.
+- Configure environment-specific permissions.
+- Configure dbt connection profiles and targets.
+- Establish AWS IAM permissions.
+- Configure secrets management.
+
+Environment isolation is established before transformation development begins.
+
+### Phase 4 — Basic CI/CD Foundation
+
+- Configure GitHub Actions.
+- Establish pull request validation.
+- Configure CI authentication.
+- Configure production deployment authentication.
+- Create an initial dbt smoke-test model.
+- Validate the CI execution environment.
+- Validate the production deployment workflow.
+- Establish the feature branch and pull request process.
+
+The initial CI/CD framework is intentionally lightweight and expanded as the project grows.
+
+### Phase 5 — Source Data and Ingestion Development
+
+- Generate synthetic relational source datasets.
+- Establish clean source data backups.
+- Introduce controlled data quality issues.
+- Configure the AWS S3 landing zone.
+- Configure Snowflake storage integration.
+- Configure external stages and file formats.
+- Create Bronze source tables.
+- Configure Snowpipe ingestion.
+- Validate source file loading.
+
+### Phase 6 — Silver Transformation Development
+
+- Define dbt sources.
+- Develop standardised transformation models.
+- Implement defensive type conversion.
+- Implement duplicate handling.
+- Implement missing value handling.
+- Validate source relationships.
+- Develop data quality rules.
+- Test transformations in DEV.
+- Submit changes through CI.
+
+### Phase 7 — Gold Analytical Development
+
+- Define analytical model grain.
+- Develop fact and dimension models.
+- Implement historical customer modelling.
+- Establish business metric definitions.
+- Validate model relationships.
+- Implement business rule tests.
+- Promote validated models through CI/CD.
+
+### Phase 8 — Data Quality and Deployment Hardening
+
+- Expand generic and custom dbt tests.
+- Validate critical business rules.
+- Configure appropriate test severity.
+- Validate environment isolation.
+- Review service account permissions.
+- Test CI failure scenarios.
+- Validate production deployment.
+- Document architecture and operational procedures.
+
+### Phase 9 — Monitoring and Observability
+
+Planned operational capabilities include:
+
+- Snowpipe ingestion monitoring.
+- File load failure investigation.
+- dbt execution monitoring.
+- Data freshness monitoring.
+- Data quality trend monitoring.
+- Pipeline execution history.
+- Warehouse usage and cost monitoring.
+- Operational alerting and incident investigation.
+
+Monitoring and observability will extend the existing ingestion, transformation and deployment architecture.
+
+---
+
+## 13. Local Development
+
+### 13.1 Prerequisites
 
 - Python
 - Git
+- AWS CLI
 - Snowflake account
 - AWS account
-- Configured AWS credentials
-- Configured dbt profiles
-- Required Snowflake roles and permissions
+- dbt Core
+- Snowflake dbt adapter
 
-### Clone the Repository
+### 13.2 Clone the Repository
 
 ```bash
 git clone https://github.com/youkeefan/travel-data-platform.git
 cd travel-data-platform
 ```
 
-### Configure Python Environment
+### 13.3 Configure the Python Environment
 
-```powershell
+Create a virtual environment:
+
+```bash
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
 ```
 
-### Execute dbt
+Activate the environment on Windows:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Install project dependencies using the repository's dependency configuration.
+
+### 13.4 Configure Environment Connections
+
+Configure the required AWS and Snowflake credentials.
+
+Ensure that:
+
+- Local development uses the DEV target.
+- CI uses the CI target.
+- Production deployment uses the PROD target.
+- Credentials are excluded from version control.
+
+### 13.5 Generate Source Data
+
+For a new synthetic dataset:
+
+```bash
+python generate_travel_data.py
+```
+
+Optionally introduce controlled data quality issues:
+
+```bash
+python inject_dirty_data.py --batch all
+```
+
+These commands are intended for initial dataset preparation or controlled testing.
+
+Do not regenerate or reinject existing datasets unless intentionally resetting the local test environment.
+
+### 13.6 Upload Source Data
+
+Upload prepared source files to the configured S3 landing zone:
+
+```bash
+python ingestion/src/upload_to_s3.py
+```
+
+Snowpipe processes the uploaded files into the Bronze layer.
+
+### 13.7 Execute dbt
+
+Navigate to the dbt project directory:
 
 ```bash
 cd dbt
+```
+
+Install dbt package dependencies:
+
+```bash
 dbt deps
+```
+
+Validate the development connection:
+
+```bash
 dbt debug --target dev
+```
+
+Build development models and execute tests:
+
+```bash
 dbt build --target dev
 ```
 
-Local dbt execution requires a correctly configured Snowflake development profile.
+Generate dbt documentation:
 
-Production deployment is managed through GitHub Actions rather than manual local execution.
+```bash
+dbt docs generate --target dev
+```
 
-## 11. Engineering Practices
+Serve documentation locally:
 
-- Modular ELT architecture
-- Separation of storage and compute
-- Medallion architecture
-- Dimensional modelling
-- Slowly changing dimensions and historical tracking
-- Automated data quality testing
-- Data quarantine
-- Infrastructure and environment separation
-- Role-based access control
-- Secure service account authentication
-- Version-controlled transformations
-- Automated integration and deployment
+```bash
+dbt docs serve
+```
 
-## 12. Project Roadmap
+### 13.8 Feature Development
 
-- [x] Synthetic data generation
-- [x] AWS S3 and Snowpipe ingestion
-- [x] Bronze layer implementation
-- [x] Silver transformation layer
-- [x] Gold dimensional modelling
-- [x] Data quality and quarantine
-- [x] DEV, CI and PROD environment management
-- [x] Role-based access control
-- [x] GitHub Actions CI/CD
-- [x] Production deployment
-- [ ] Monitoring and observability
+Create a feature branch:
 
-## 13. Disclaimer
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/model-update
+```
 
-This project uses synthetic data and is designed for educational and portfolio purposes. It does not contain real customer information or proprietary business data.
+Develop and validate changes in DEV.
 
-The platform demonstrates production-oriented data engineering practices within a personal cloud development environment.
+Stage and commit the changes:
+
+```bash
+git add .
+git commit -m "feat: update transformation models"
+```
+
+Push the feature branch:
+
+```bash
+git push -u origin feature/model-update
+```
+
+Create a pull request targeting main.
+
+GitHub Actions executes the CI workflow.
+
+Review validation results before merging.
+
+Following a successful merge, the CD workflow deploys the updated models to PROD.
+
+---
+
+## 14. Repository Structure
+
+The following represents the main project components.
+
+```text
+travel-data-platform/
+|
+|-- .github/
+|   |-- workflows/
+|
+|-- dbt/
+|   |-- models/
+|   |-- tests/
+|   |-- scripts/
+|   |-- dbt_project.yml
+|
+|-- ingestion/
+|   |-- src/
+|       |-- upload_to_s3.py
+|       |-- upload_test_files.py
+|
+|-- data/
+|-- data_clean/
+|-- docs/
+|
+|-- generate_travel_data.py
+|-- generate_test_files.py
+|-- inject_dirty_data.py
+|-- .gitignore
+|-- README.md
+```
+
+### Component Responsibilities
+
+| Component | Responsibility |
+|---|---|
+| .github/workflows | Automated CI/CD workflows |
+| dbt/models | Transformation and analytical models |
+| dbt/tests | Custom data quality tests |
+| dbt/scripts | Transformation development utilities |
+| ingestion/src | Source file ingestion utilities |
+| data | Generated source datasets |
+| data_clean | Clean source data backups |
+| docs | Data quality manifests and project documentation |
+| generate_travel_data.py | Synthetic source data generation |
+| generate_test_files.py | Controlled ingestion test file generation |
+| inject_dirty_data.py | Consolidated dirty data injection |
+
+---
+
+## 15. Implementation Results
+
+The platform has successfully implemented automated ingestion, isolated transformation environments and CI/CD deployment.
+
+### 15.1 Warehouse Objects
+
+| Environment | Bronze Tables | Silver Views | Gold Tables |
+|---|---:|---:|---:|
+| PROD | 15 | 21 | 16 |
+| DEV | Shared source access | 21 | 16 |
+| CI | Shared source access | 21 | 16 |
+
+### 15.2 dbt Project
+
+| Component | Count |
+|---|---:|
+| dbt Models | 37 |
+| Data Tests | 387 |
+| Source Definitions | 15 |
+
+### 15.3 Latest Production Build
+
+| Result | Count |
+|---|---:|
+| Passed | 413 |
+| Warnings | 11 |
+| Errors | 0 |
+| Skipped | 0 |
+| Total Executed Nodes | 424 |
+
+The production build completed successfully with no errors.
+
+Warning-level results remain visible for data quality investigation.
+
+### 15.4 Engineering Capabilities
+
+- Automated cloud ingestion.
+- Layered ELT transformation.
+- Isolated development environments.
+- Automated pull request validation.
+- Automated production deployment.
+- Dimensional modelling.
+- Historical customer modelling.
+- Defensive data type conversion.
+- Automated data quality testing.
+- Role-based access control.
+- Controlled synthetic data quality scenarios.
+
+---
+
+## 16. Engineering Practices
+
+### Version Control
+
+All transformation and configuration changes are managed through Git.
+
+Feature branches and pull requests provide traceability and controlled integration.
+
+### Modularity
+
+Transformation logic is separated into reusable models with clearly defined responsibilities.
+
+### Data Quality
+
+Validation rules are implemented alongside transformation logic.
+
+### Environment Isolation
+
+Development, automated validation and production workloads operate in separate transformation environments.
+
+### Security
+
+Access permissions follow the principle of least privilege.
+
+Sensitive credentials are managed outside version control.
+
+### Reproducibility
+
+Synthetic data generation, controlled dirty data injection and version-controlled transformations support repeatable development and testing.
+
+### Documentation
+
+dbt documentation, source definitions and model descriptions support discoverability and maintainability.
+
+### Cost Awareness
+
+The platform uses shared Bronze source access and separates transformation environments to reduce unnecessary raw data duplication.
+
+---
+
+## 17. Monitoring and Observability
+
+Status: Planned.
+
+The next implementation phase focuses on operational reliability and visibility across the data platform.
+
+### Planned Monitoring Areas
+
+| Area | Monitoring Focus |
+|---|---|
+| Ingestion | Snowpipe load history and ingestion failures |
+| Transformation | dbt execution status and model failures |
+| Data Quality | Test failures, warnings and quality trends |
+| Data Freshness | Source and transformation freshness |
+| Infrastructure | Warehouse usage and compute consumption |
+| Operations | Incident investigation and alerting |
+
+The objective is to move beyond successful deployment towards reliable, observable and maintainable data operations.
+
+---
+
+## 18. Project Status
+
+| Component | Status |
+|---|---|
+| Architecture Design | Implemented |
+| Synthetic Data Generation | Implemented |
+| Dirty Data Injection | Implemented |
+| AWS S3 Integration | Implemented |
+| Snowpipe Ingestion | Implemented |
+| Bronze Layer | Implemented |
+| Silver Layer | Implemented |
+| Gold Layer | Implemented |
+| Dimensional Modelling | Implemented |
+| Historical Data Modelling | Implemented |
+| Data Quality Testing | Implemented |
+| DEV / CI / PROD Isolation | Implemented |
+| Role-Based Access Control | Implemented |
+| Continuous Integration | Implemented |
+| Continuous Deployment | Implemented |
+| CI Failure Validation | Implemented |
+| Monitoring and Observability | Planned |
+
+---
+
+## 19. Conclusion
+
+The Travel Data Platform demonstrates the design and implementation of an end-to-end cloud data engineering solution using modern data engineering technologies.
+
+The project combines automated ingestion, modular ELT transformations, dimensional modelling, data quality management, environment isolation and CI/CD into a unified architecture.
+
+Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics.
+
+---
+
+## Author
+
+Yujia Fan
+
+Data Analytics | Analytics Engineering | Data Engineering
