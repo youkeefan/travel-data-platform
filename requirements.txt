@@ -1,0 +1,10 @@
+# Data transformation
+dbt-core==1.12.7
+dbt-snowflake==1.12.5
+dbt-state==2.64.3
+
+# AWS S3 ingestion
+boto3==1.44.9
+
+# Time zone support
+tzdata==2026.6
