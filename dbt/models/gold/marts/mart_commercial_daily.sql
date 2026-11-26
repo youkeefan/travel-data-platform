@@ -1,11 +1,56 @@
-{{ config(materialized='table') }}
+{{ config(
+    materialized='incremental',
+    incremental_strategy='merge',
+    unique_key='COMMERCIAL_DAILY_KEY',
+    on_schema_change='fail',
+    post_hook="
+        DELETE FROM {{ this }} AS m
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM {{ ref('fact_booking_items') }} AS f
+            WHERE f.TRANSACTION_DATE_KEY = m.TRANSACTION_DATE_KEY
+              AND f.PRODUCT_KEY = m.PRODUCT_KEY
+              AND f.GROSS_SALES_AUD > 0
+        )
+    "
+) }}
 
-WITH source AS (
+WITH affected_groups AS (
 
-    SELECT *
+    SELECT DISTINCT
+        TRANSACTION_DATE_KEY,
+        PRODUCT_KEY
+
     FROM {{ ref('fact_booking_items') }}
 
-    WHERE GROSS_SALES_AUD > 0
+    {% if is_incremental() %}
+
+    WHERE UPDATED_AT_UTC >= (
+
+        SELECT COALESCE(
+            MAX(SOURCE_UPDATED_AT_UTC),
+            '1900-01-01'::TIMESTAMP_NTZ
+        )
+
+        FROM {{ this }}
+
+    )
+
+    {% endif %}
+
+),
+
+source AS (
+
+    SELECT f.*
+
+    FROM {{ ref('fact_booking_items') }} f
+
+    INNER JOIN affected_groups a
+        ON f.TRANSACTION_DATE_KEY = a.TRANSACTION_DATE_KEY
+        AND f.PRODUCT_KEY = a.PRODUCT_KEY
+
+    WHERE f.GROSS_SALES_AUD > 0
 
 ),
 
@@ -32,7 +77,9 @@ aggregated AS (
         SUM(REFUND_AUD) AS REFUND_AUD,
 
         SUM(ROOM_NIGHTS) AS ROOM_NIGHTS,
-        SUM(TRAVELLER_COUNT) AS TRAVELLER_COUNT
+        SUM(TRAVELLER_COUNT) AS TRAVELLER_COUNT,
+
+        MAX(UPDATED_AT_UTC) AS SOURCE_UPDATED_AT_UTC
 
     FROM source
 
@@ -85,6 +132,7 @@ final AS (
         a.REFUND_AUD,
         a.ROOM_NIGHTS,
         a.TRAVELLER_COUNT,
+        a.SOURCE_UPDATED_AT_UTC,
 
         -- Derived KPIs
         ROUND(

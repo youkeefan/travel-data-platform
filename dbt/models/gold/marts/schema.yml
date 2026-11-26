@@ -3,11 +3,14 @@ version: 2
 models:
   - name: mart_commercial_daily
     description: >
-      Daily commercial performance at transaction date
-      and product grain. Includes only booking items
-      with positive gross sales. Unknown products are
-      retained. Product attributes reflect current
-      dimension values.
+      Incremental daily commercial performance at
+      transaction date and product grain. Includes only
+      booking items with positive gross sales.
+      Uses source update timestamps to identify affected
+      groups and MERGE to update existing records.
+      A post-hook removes obsolete aggregate groups.
+      Unknown products are retained. Product attributes
+      reflect current dimension values at reprocessing time.
 
     data_tests:
       - dbt_utils.unique_combination_of_columns:
@@ -103,6 +106,14 @@ models:
         description: >
           Gross sales divided by booking item count.
           Recalculate when aggregating across rows.
+        data_tests:
+          - not_null
+
+      - name: source_updated_at_utc
+        description: >
+          Latest source update timestamp among qualifying
+          booking items within each date and product group.
+          Used for incremental watermark tracking.
         data_tests:
           - not_null
 
