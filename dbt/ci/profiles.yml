@@ -1,0 +1,14 @@
+travel_data_platform:
+  target: ci
+  outputs:
+    ci:
+      type: snowflake
+      account: DYJXRCH-MB39782
+      user: TRAVEL_CI_USER
+      role: TRAVEL_CI_ROLE
+      database: TRAVEL_CI_DB
+      warehouse: TRAVEL_CI_WH
+      schema: SILVER
+      threads: 4
+      private_key_path: "{{ env_var('SNOWFLAKE_CI_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('DBT_ENV_SECRET_CI_PASSPHRASE') }}"
