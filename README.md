@@ -3,7 +3,33 @@
 
 An end-to-end cloud data engineering platform designed to simulate a modern travel e-commerce data ecosystem using AWS, Snowflake, dbt, Python and GitHub Actions.
 
-The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control and CI/CD deployment.
+The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control and CI/CD deployment. The platform also includes a DEV-only Snowflake semantic layer and Cortex Analyst integration for natural language analytics.
+
+---
+
+## Table of Contents
+
+- [1. Project Overview](#1-project-overview)
+- [2. Technology Stack](#2-technology-stack)
+- [3. System Architecture](#3-system-architecture)
+- [4. Environment Management](#4-environment-management)
+- [5. Security and Access Control](#5-security-and-access-control)
+- [6. Data Domain](#6-data-domain)
+- [7. Data Ingestion](#7-data-ingestion)
+- [8. Medallion Architecture](#8-medallion-architecture)
+- [9. Data Modelling](#9-data-modelling)
+- [10. Data Quality Framework](#10-data-quality-framework)
+- [11. CI/CD](#11-cicd)
+- [12. Development and Implementation Workflow](#12-development-and-implementation-workflow)
+- [13. Local Development](#13-local-development)
+- [14. AI-Enabled Analytics — Semantic Layer & Cortex Analyst](#14-ai-enabled-analytics--semantic-layer--cortex-analyst)
+- [15. Repository Structure](#15-repository-structure)
+- [16. Implementation Results](#16-implementation-results)
+- [17. Engineering Practices](#17-engineering-practices)
+- [18. Monitoring and Observability](#18-monitoring-and-observability)
+- [19. Project Status](#19-project-status)
+- [20. Conclusion](#20-conclusion)
+- [Author](#author)
 
 ---
 
@@ -25,6 +51,7 @@ The project follows an ELT architecture, where source data is extracted and load
 - Implement secure, automated CI/CD deployment.
 - Establish traceability, documentation and data lineage.
 - Enable reliable downstream business intelligence and analytics.
+- Define governed business metrics and enable natural language analytics.
 
 ---
 
@@ -44,6 +71,8 @@ The project follows an ELT architecture, where source data is extracted and load
 | GitHub Actions | Continuous integration and deployment |
 | VS Code | Local development environment |
 | YAML | Configuration, source definitions and data tests |
+| Snowflake Semantic Views | Governed business dimensions, facts and metrics |
+| Snowflake Cortex Analyst | Natural language to SQL analytics |
 
 ---
 
@@ -69,6 +98,9 @@ flowchart TD
     F --> G
     G --> H
     H --> I
+    H --> O[Semantic View - DEV]
+    O --> P[Cortex Analyst]
+    P --> Q[Natural Language Analytics]
 
     J[GitHub Repository]
     K[GitHub Actions CI/CD]
@@ -115,6 +147,7 @@ The platform uses three isolated Snowflake environments to separate development,
 | Bronze | Shared source access | Shared source access | Physical source tables |
 | Silver | Views | Views | Views |
 | Gold | Tables | Tables | Tables |
+| Semantic | Implemented | Not deployed | Not deployed |
 
 DEV and CI use controlled access to the existing Bronze source data while maintaining isolated transformation outputs.
 
@@ -134,7 +167,7 @@ flowchart LR
     A --> B --> C --> D --> E --> F
 ```
 
-Changes are developed and tested in DEV, automatically validated in CI and deployed to PROD following a successful merge.
+dbt transformation changes are developed and tested in DEV, automatically validated in CI and deployed to PROD following a successful merge. Semantic view SQL is version-controlled separately and is not yet included in automated deployment.
 
 ---
 
@@ -700,6 +733,24 @@ remain future enhancements.
 
 ---
 
+### Phase 10 — Semantic Layer and AI Analytics
+
+- Define business metrics and aggregation rules using the Gold commercial mart.
+- Create a native Snowflake Semantic View in DEV.
+- Grant Cortex Analyst access to the development role.
+- Reconcile semantic metrics against reference SQL.
+- Test natural language queries and unsupported questions in Playground.
+- Version-control the semantic view definition.
+
+### Phase 11 — AI Evaluation (Planned)
+
+- Establish benchmark questions and reference SQL.
+- Evaluate baseline accuracy and unsupported-question handling.
+- Add verified queries and compare results against the baseline.
+- Document limitations and evaluation outcomes.
+
+---
+
 ## 13. Local Development
 
 ### 13.1 Prerequisites
@@ -843,11 +894,111 @@ GitHub Actions executes the CI workflow.
 
 Review validation results before merging.
 
-Following a successful merge, the CD workflow deploys the updated models to PROD.
+Following a successful merge, the CD workflow deploys the updated dbt models to PROD. Semantic view deployment remains manual and DEV-only.
 
 ---
 
-## 14. Repository Structure
+## 14. AI-Enabled Analytics — Semantic Layer & Cortex Analyst
+
+### 14.1 Architecture and Scope
+
+The native Snowflake semantic layer extends the existing Gold layer without duplicating its data. The current implementation is deployed in DEV only.
+
+```mermaid
+flowchart LR
+    A[GOLD.FACT_BOOKING_ITEMS] --> B[GOLD.MART_COMMERCIAL_DAILY]
+    B --> C[SEMANTIC.COMMERCIAL_ANALYTICS]
+    C --> D[Cortex Analyst]
+    E[Business Question] --> D
+    D --> F[Generated SQL and Results]
+```
+
+| Property | Definition |
+|---|---|
+| Deployed object | `TRAVEL_DEV_DB.SEMANTIC.COMMERCIAL_ANALYTICS` |
+| Source | `GOLD.MART_COMMERCIAL_DAILY` |
+| Grain | One row per transaction date and product |
+| Source filter | Booking items with positive gross sales |
+| Logical tables | 1 |
+| Dimensions | 13 |
+| Facts | 7 |
+| Metrics | 9 |
+| Development role | `TRAVEL_DEV_ROLE` |
+| AI access | `SNOWFLAKE.CORTEX_ANALYST_USER` database role |
+| Version-controlled definition | `snowflake/semantic/01_commercial_analytics.sql` |
+
+### 14.2 Business Metric Governance
+
+Dimensions cover transaction dates, calendar and financial periods, products, destinations, categories and vendors. Facts represent sales, margin, discounts, refunds, booking item counts, room nights and item-level traveller counts.
+
+| Metric | Aggregation |
+|---|---|
+| Total sales | SUM of gross sales (AUD) |
+| Total margin | SUM of gross margin (AUD) |
+| Total discount | SUM of discounts (AUD) |
+| Total refund | SUM of refunds (AUD) |
+| Total booking items | SUM of booking item counts |
+| Total room nights | SUM of room nights |
+| Total travellers | SUM of item-level traveller counts, not unique individuals |
+| Gross margin rate | SUM of margin / NULLIF(SUM of sales, 0) |
+| Average booking item value | SUM of sales / NULLIF(SUM of booking item counts, 0) |
+
+Ratios are recalculated from aggregate components rather than averaging precomputed row-level ratios. Distinct booking and customer counts are excluded because they are non-additive at the daily product grain. Accurate unique counts require a suitable lower-grain source.
+
+### 14.3 Development and Reproducibility
+
+The DEV semantic schema and permissions are configured before creating the view. The SQL definition uses schema-qualified names without hardcoding a database. Before executing it, explicitly select the intended database and ensure the target semantic schema, source objects and permissions exist.
+
+For the existing DEV environment:
+
+```sql
+USE ROLE TRAVEL_DEV_ROLE;
+USE DATABASE TRAVEL_DEV_DB;
+USE SCHEMA SEMANTIC;
+```
+
+Execute the version-controlled SQL definition when intentionally creating or replacing the view. Do not replace the existing object merely to reproduce the initial tests.
+
+Cortex Analyst is accessed through Snowsight Workspaces using the linked semantic view and Playground. The development role is used for testing. No external LLM API key or separate application is required for this implementation.
+
+### 14.4 Semantic Metric Reconciliation
+
+Five semantic metrics matched direct Gold mart SQL results in the initial DEV test:
+
+| Metric | Reference result |
+|---|---:|
+| Total sales | AUD 11,468,646.04 |
+| Total margin | AUD 2,137,825.03 |
+| Booking items | 4,452 |
+| Gross margin rate | 18.640605% |
+| Average booking item value | AUD 2,576.06604672 |
+
+These are observed synthetic-data results, not fixed expectations for future data refreshes.
+
+### 14.5 Initial Cortex Analyst Functional Testing
+
+| Test | Question | Result |
+|---|---|---|
+| 1 | What are the total sales? | Passed; exact sales match |
+| 2 | What are the total gross sales, gross margin and gross margin rate? | Passed; all three metrics matched |
+| 3 | What are the top 5 destinations by total gross sales? | Passed; all five destinations and values matched |
+| 4 | Show monthly gross sales and gross margin for 2025. | Partial; seven visible months matched; reference SQL returned 12 months |
+| 5 | Which product category has the highest gross margin rate? | Passed; Experiences, 27.429078% |
+| 6 | How many unique customers do we have? | Passed; correctly identified unsupported metric |
+
+Five of six functional tests are fully verified. The remaining test is partially verified. This small sample does not establish general AI accuracy. The first query also returned redundant date columns without affecting its sales result.
+
+### 14.6 Limitations and Next Steps
+
+- Semantic view deployment is currently DEV-only; CI and PROD semantic deployment are not implemented.
+- Existing GitHub Actions workflows validate and deploy dbt models, not semantic view SQL.
+- The portable SQL definition has not yet been tested in CI or PROD.
+- The commercial semantic view does not support unique customer counts or all loyalty and financial use cases.
+- Formal benchmark evaluation, verified query optimisation and regression testing are planned for Day 8.
+
+---
+
+## 15. Repository Structure
 
 The following represents the main project components.
 
@@ -870,8 +1021,10 @@ travel-data-platform/
 |
 |-- snowflake/
 |   |-- monitoring/
-|       |-- 04_data_profiling.sql
-|       |-- snowpipe_monitoring.sql
+|   |   |-- 04_data_profiling.sql
+|   |   |-- snowpipe_monitoring.sql
+|   |-- semantic/
+|       |-- 01_commercial_analytics.sql
 |
 |-- data/
 |-- data_clean/
@@ -894,6 +1047,7 @@ travel-data-platform/
 | dbt/scripts | Transformation development utilities |
 | ingestion/src | Source file ingestion utilities |
 | snowflake/monitoring | Ingestion monitoring, data profiling and data quality evaluation |
+| snowflake/semantic | Version-controlled semantic views and business metric definitions |
 | data | Generated source datasets |
 | data_clean | Clean source data backups |
 | docs | Data quality manifests and project documentation |
@@ -903,11 +1057,11 @@ travel-data-platform/
 
 ---
 
-## 15. Implementation Results
+## 16. Implementation Results
 
 The platform has successfully implemented automated ingestion, isolated transformation environments and CI/CD deployment.
 
-### 15.1 Warehouse Objects
+### 16.1 Warehouse Objects
 
 | Environment | Bronze Tables | Silver Views | Gold Tables |
 |---|---:|---:|---:|
@@ -915,7 +1069,7 @@ The platform has successfully implemented automated ingestion, isolated transfor
 | DEV | Shared source access | 21 | 16 |
 | CI | Shared source access | 21 | 16 |
 
-### 15.2 dbt Project
+### 16.2 dbt Project
 
 | Component | Count |
 |---|---:|
@@ -923,7 +1077,7 @@ The platform has successfully implemented automated ingestion, isolated transfor
 | Data Tests | 387 |
 | Source Definitions | 15 |
 
-### 15.3 Latest Production Build
+### 16.3 Latest Production Build
 
 | Result | Count |
 |---|---:|
@@ -937,7 +1091,7 @@ The production build completed successfully with no errors.
 
 Warning-level results remain visible for data quality investigation.
 
-### 15.4 Engineering Capabilities
+### 16.4 Engineering Capabilities
 
 - Automated cloud ingestion.
 - Layered ELT transformation.
@@ -950,10 +1104,12 @@ Warning-level results remain visible for data quality investigation.
 - Automated data quality testing.
 - Role-based access control.
 - Controlled synthetic data quality scenarios.
+- Native semantic view and governed metrics in DEV.
+- Natural language analytics with initial SQL reconciliation.
 
 ---
 
-## 16. Engineering Practices
+## 17. Engineering Practices
 
 ### Version Control
 
@@ -994,7 +1150,7 @@ The platform uses shared Bronze source access and separates transformation envir
 ---
 
 
-## 17. Monitoring and Observability
+## 18. Monitoring and Observability
 
 Status: Basic monitoring implemented.
 
@@ -1002,7 +1158,7 @@ The platform provides operational visibility across
 data ingestion, data quality, transformation execution
 and automated deployment.
 
-### 17.1 Ingestion Monitoring
+### 18.1 Ingestion Monitoring
 
 Implemented in:
 
@@ -1026,7 +1182,7 @@ and ingestion failure investigation.
 ACCOUNT_USAGE metadata may have reporting latency
 and should not be treated as real-time monitoring.
 
-### 17.2 Data Profiling and Quality Monitoring
+### 18.2 Data Profiling and Quality Monitoring
 
 Implemented in:
 
@@ -1042,7 +1198,7 @@ The platform includes:
 These capabilities complement the dbt transformation
 and business rule testing framework.
 
-### 17.3 Transformation Monitoring
+### 18.3 Transformation Monitoring
 
 dbt provides execution-level visibility through:
 
@@ -1055,7 +1211,7 @@ dbt provides execution-level visibility through:
 The project contains 387 dbt data tests covering
 structural integrity, relationships and business rules.
 
-### 17.4 CI/CD Monitoring
+### 18.4 CI/CD Monitoring
 
 GitHub Actions provides visibility into automated
 validation and production deployment.
@@ -1071,7 +1227,7 @@ Monitoring capabilities include:
 Critical CI failures prevent successful validation
 and should be resolved before production deployment.
 
-### 17.5 Monitoring Coverage
+### 18.5 Monitoring Coverage
 
 | Area | Implementation | Status |
 |---|---|---|
@@ -1087,7 +1243,7 @@ and should be resolved before production deployment.
 | Centralised observability | Future enhancement | Planned |
 | Automated operational alerting | Future enhancement | Planned |
 
-### 17.6 Future Enhancements
+### 18.6 Future Enhancements
 
 Potential operational improvements include:
 
@@ -1105,7 +1261,7 @@ infrastructure complexity.
 
 ---
 
-## 18. Project Status
+## 19. Project Status
 
 | Component | Status |
 |---|---|
@@ -1127,16 +1283,38 @@ infrastructure complexity.
 | CI Failure Validation | Implemented |
 | Basic Monitoring and Observability | Implemented |
 | Advanced Observability and Alerting | Future Enhancement |
+| Semantic View | Implemented in DEV |
+| Cortex Analyst | Implemented in DEV |
+| Initial AI Functional Testing | Five passed; one partially verified |
+| Formal AI Evaluation and Verified Queries | Planned — Day 8 |
+| Semantic CI/CD and PROD Deployment | Future Enhancement |
 
 ---
 
-## 19. Conclusion
+### Project Roadmap
+
+| Day | Scope | Status |
+|---|---|---|
+| 1 | Architecture and data generation | Completed |
+| 2 | Ingestion and Bronze | Completed |
+| 3 | Silver and data cleaning | Completed |
+| 4 | Data profiling and Gold | Completed |
+| 5 | Environment management and CI/CD hardening | Completed |
+| 6 | Lightweight monitoring and observability | Completed |
+| 7 | Semantic Views and Cortex Analyst | DEV implementation completed; one functional test partially verified |
+| 8 | AI accuracy evaluation and documentation | Planned |
+
+The roadmap records learning milestones; Section 12 describes the recommended environment-first implementation sequence.
+
+---
+
+## 20. Conclusion
 
 The Travel Data Platform demonstrates the design and implementation of an end-to-end cloud data engineering solution using modern data engineering technologies.
 
 The project combines automated ingestion, modular ELT transformations, dimensional modelling, data quality management, environment isolation and CI/CD into a unified architecture.
 
-Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics.
+Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics. The DEV semantic layer extends these foundations to governed natural language analytics, with formal AI evaluation and production semantic deployment remaining future work.
 
 ---
 
