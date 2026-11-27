@@ -678,20 +678,25 @@ The initial CI/CD framework is intentionally lightweight and expanded as the pro
 - Validate production deployment.
 - Document architecture and operational procedures.
 
+
 ### Phase 9 — Monitoring and Observability
 
-Planned operational capabilities include:
+- Establish Snowpipe ingestion monitoring.
+- Monitor recent file loading activity.
+- Identify failed and partially loaded files.
+- Investigate ingestion error messages.
+- Implement metadata-driven data quality evaluation.
+- Store data quality evaluation results.
+- Monitor dbt model and test execution.
+- Monitor CI/CD execution through GitHub Actions.
+- Document operational monitoring procedures.
 
-- Snowpipe ingestion monitoring.
-- File load failure investigation.
-- dbt execution monitoring.
-- Data freshness monitoring.
-- Data quality trend monitoring.
-- Pipeline execution history.
-- Warehouse usage and cost monitoring.
-- Operational alerting and incident investigation.
+Basic monitoring is implemented using Snowflake-native
+metadata, SQL-based data quality evaluation, dbt tests
+and GitHub Actions execution logs.
 
-Monitoring and observability will extend the existing ingestion, transformation and deployment architecture.
+Advanced observability and automated operational alerting
+remain future enhancements.
 
 ---
 
@@ -863,6 +868,11 @@ travel-data-platform/
 |       |-- upload_to_s3.py
 |       |-- upload_test_files.py
 |
+|-- snowflake/
+|   |-- monitoring/
+|       |-- 04_data_profiling.sql
+|       |-- snowpipe_monitoring.sql
+|
 |-- data/
 |-- data_clean/
 |-- docs/
@@ -883,6 +893,7 @@ travel-data-platform/
 | dbt/tests | Custom data quality tests |
 | dbt/scripts | Transformation development utilities |
 | ingestion/src | Source file ingestion utilities |
+| snowflake/monitoring | Ingestion monitoring, data profiling and data quality evaluation |
 | data | Generated source datasets |
 | data_clean | Clean source data backups |
 | docs | Data quality manifests and project documentation |
@@ -982,24 +993,115 @@ The platform uses shared Bronze source access and separates transformation envir
 
 ---
 
+
 ## 17. Monitoring and Observability
 
-Status: Planned.
+Status: Basic monitoring implemented.
 
-The next implementation phase focuses on operational reliability and visibility across the data platform.
+The platform provides operational visibility across
+data ingestion, data quality, transformation execution
+and automated deployment.
 
-### Planned Monitoring Areas
+### 17.1 Ingestion Monitoring
 
-| Area | Monitoring Focus |
-|---|---|
-| Ingestion | Snowpipe load history and ingestion failures |
-| Transformation | dbt execution status and model failures |
-| Data Quality | Test failures, warnings and quality trends |
-| Data Freshness | Source and transformation freshness |
-| Infrastructure | Warehouse usage and compute consumption |
-| Operations | Incident investigation and alerting |
+Implemented in:
 
-The objective is to move beyond successful deployment towards reliable, observable and maintainable data operations.
+`snowflake/monitoring/snowpipe_monitoring.sql`
+
+Snowflake ACCOUNT_USAGE.COPY_HISTORY provides file-level
+ingestion visibility.
+
+Monitoring capabilities include:
+
+- Recent file loading activity over the previous 24 hours.
+- Failed and partially loaded files over the previous 7 days.
+- Snowpipe and target table identification.
+- File-level ingestion status.
+- Error counts and first error messages.
+- Load timestamps for incident investigation.
+
+These queries support operational troubleshooting
+and ingestion failure investigation.
+
+ACCOUNT_USAGE metadata may have reporting latency
+and should not be treated as real-time monitoring.
+
+### 17.2 Data Profiling and Quality Monitoring
+
+Implemented in:
+
+`snowflake/monitoring/04_data_profiling.sql`
+
+The platform includes:
+
+- Source data profiling.
+- SQL-based automated data quality evaluation.
+- A dedicated data quality results table.
+- Identification of data quality issues.
+
+These capabilities complement the dbt transformation
+and business rule testing framework.
+
+### 17.3 Transformation Monitoring
+
+dbt provides execution-level visibility through:
+
+- Model execution results.
+- Data test results.
+- Error and warning severity.
+- Failed and skipped model identification.
+- Execution logs.
+
+The project contains 387 dbt data tests covering
+structural integrity, relationships and business rules.
+
+### 17.4 CI/CD Monitoring
+
+GitHub Actions provides visibility into automated
+validation and production deployment.
+
+Monitoring capabilities include:
+
+- Workflow execution status.
+- Pull request validation results.
+- Production deployment results.
+- Step-level execution logs.
+- Failed workflow investigation.
+
+Critical CI failures prevent successful validation
+and should be resolved before production deployment.
+
+### 17.5 Monitoring Coverage
+
+| Area | Implementation | Status |
+|---|---|---|
+| Ingestion history | Snowflake COPY_HISTORY | Implemented |
+| Ingestion failure detection | SQL monitoring queries | Implemented |
+| Data profiling | SQL profiling framework | Implemented |
+| Data quality evaluation | SQL-based quality engine | Implemented |
+| Data quality results | Dedicated results table | Implemented |
+| Transformation validation | dbt models and tests | Implemented |
+| CI/CD monitoring | GitHub Actions logs | Implemented |
+| Automated freshness monitoring | Future enhancement | Planned |
+| Compute and cost monitoring | Future enhancement | Planned |
+| Centralised observability | Future enhancement | Planned |
+| Automated operational alerting | Future enhancement | Planned |
+
+### 17.6 Future Enhancements
+
+Potential operational improvements include:
+
+- Automated source freshness checks.
+- Centralised operational monitoring views.
+- Automated failure notifications.
+- Data quality trend dashboards.
+- Warehouse usage and cost monitoring.
+- Pipeline scheduling and orchestration.
+- Operational incident management procedures.
+
+The current implementation provides a foundational
+monitoring capability without introducing unnecessary
+infrastructure complexity.
 
 ---
 
@@ -1023,7 +1125,8 @@ The objective is to move beyond successful deployment towards reliable, observab
 | Continuous Integration | Implemented |
 | Continuous Deployment | Implemented |
 | CI Failure Validation | Implemented |
-| Monitoring and Observability | Planned |
+| Basic Monitoring and Observability | Implemented |
+| Advanced Observability and Alerting | Future Enhancement |
 
 ---
 
