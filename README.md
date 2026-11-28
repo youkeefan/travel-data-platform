@@ -3,7 +3,7 @@
 
 An end-to-end cloud data engineering platform designed to simulate a modern travel e-commerce data ecosystem using AWS, Snowflake, dbt, Python and GitHub Actions.
 
-The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control and CI/CD deployment. The platform also includes a DEV-only Snowflake semantic layer and Cortex Analyst integration for natural language analytics.
+The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control CI/CD deployment and conditional scheduled Gold refreshes. The platform also includes a DEV-only Snowflake semantic layer and Cortex Analyst integration for natural language analytics.
 
 ---
 
@@ -27,8 +27,9 @@ The platform demonstrates environment isolation, automated data ingestion, layer
 - [16. Implementation Results](#16-implementation-results)
 - [17. Engineering Practices](#17-engineering-practices)
 - [18. Monitoring and Observability](#18-monitoring-and-observability)
-- [19. Project Status](#19-project-status)
-- [20. Conclusion](#20-conclusion)
+- [19. Data Freshness and Pipeline Orchestration](#19-data-freshness-and-pipeline-orchestration)
+- [20. Project Status](#20-project-status)
+- [21. Conclusion](#21-conclusion)
 - [Author](#author)
 
 ---
@@ -59,7 +60,7 @@ The project follows an ELT architecture, where source data is extracted and load
 
 | Technology | Purpose |
 |---|---|
-| Python | Synthetic data generation, dirty data injection and ingestion utilities |
+| Python | Synthetic data generation, dirty data injection, ingestion utilities and refresh orchestration |
 | AWS S3 | Cloud object storage and ingestion landing zone |
 | AWS IAM | Secure AWS resource access |
 | Snowpipe | Automated file ingestion |
@@ -68,7 +69,8 @@ The project follows an ELT architecture, where source data is extracted and load
 | dbt Core | Transformation, testing, documentation and lineage |
 | Git | Version control |
 | GitHub | Source code management and collaboration |
-| GitHub Actions | Continuous integration and deployment |
+| GitHub Actions | Continuous integration, deployment and scheduled refresh orchestration |
+| AWS CLI | Command-line S3 operations and ingestion testing |
 | VS Code | Local development environment |
 | YAML | Configuration, source definitions and data tests |
 | Snowflake Semantic Views | Governed business dimensions, facts and metrics |
@@ -97,6 +99,10 @@ flowchart TD
     E --> F
     F --> G
     G --> H
+    F --> R[Ingestion history and refresh control]
+    R --> S[Python conditional refresh]
+    T[GitHub Actions daily schedule] --> S
+    S -->|dbt build when required| H
     H --> I
     H --> O[Semantic View - DEV]
     O --> P[Cortex Analyst]
@@ -148,6 +154,7 @@ The platform uses three isolated Snowflake environments to separate development,
 | Silver | Views | Views | Views |
 | Gold | Tables | Tables | Tables |
 | Semantic | Implemented | Not deployed | Not deployed |
+| Monitoring | Development utilities | Not deployed | Refresh control and ingestion tracking |
 
 DEV and CI use controlled access to the existing Bronze source data while maintaining isolated transformation outputs.
 
@@ -398,7 +405,7 @@ Responsibilities include:
 
 Gold models are materialised as Snowflake tables.
 
-This provides a stable analytical interface for downstream consumers.
+This provides a stable analytical interface for downstream consumers. Unlike Silver views, Gold tables require a dbt rebuild to reflect new source data. The conditional refresh workflow addresses this freshness gap.
 
 ---
 
@@ -742,7 +749,15 @@ remain future enhancements.
 - Test natural language queries and unsupported questions in Playground.
 - Version-control the semantic view definition.
 
-### Phase 11 — AI Evaluation (Planned)
+### Phase 11 — Data Freshness and Pipeline Orchestration
+
+- Track successful Bronze file ingestion events and processed-file checkpoints.
+- Implement Python-based conditional dbt execution.
+- Schedule daily refresh checks using GitHub Actions.
+- Share production concurrency controls with CD.
+- Validate skip behaviour, invalid-record rejection and valid-record propagation into Gold.
+
+### Phase 12 — AI Evaluation (Planned)
 
 - Establish benchmark questions and reference SQL.
 - Evaluate baseline accuracy and unsupported-question handling.
@@ -988,13 +1003,17 @@ These are observed synthetic-data results, not fixed expectations for future dat
 
 Five of six functional tests are fully verified. The remaining test is partially verified. This small sample does not establish general AI accuracy. The first query also returned redundant date columns without affecting its sales result.
 
-### 14.6 Limitations and Next Steps
+### 14.6 Additional DEV Semantic Work
+
+Customer, financial and loyalty semantic views have also been created in DEV, with individual Playground checks reported complete. Their SQL definitions and a four-tool Cortex Agent definition are pending repository integration. Agent preview is blocked by trial-account access restrictions; the agent is not published. Formal reconciliation and benchmark evaluation remain outstanding.
+
+### 14.7 Limitations and Next Steps
 
 - Semantic view deployment is currently DEV-only; CI and PROD semantic deployment are not implemented.
 - Existing GitHub Actions workflows validate and deploy dbt models, not semantic view SQL.
 - The portable SQL definition has not yet been tested in CI or PROD.
 - The commercial semantic view does not support unique customer counts or all loyalty and financial use cases.
-- Formal benchmark evaluation, verified query optimisation and regression testing are planned for Day 8.
+- Formal benchmark evaluation, verified query optimisation and regression testing are planned for Day 9.
 
 ---
 
@@ -1007,6 +1026,7 @@ travel-data-platform/
 |
 |-- .github/
 |   |-- workflows/
+|       |-- travel-scheduled-refresh.yml
 |
 |-- dbt/
 |   |-- models/
@@ -1019,9 +1039,13 @@ travel-data-platform/
 |       |-- upload_to_s3.py
 |       |-- upload_test_files.py
 |
+|-- orchestration/
+|   |-- refresh_gold.py
+|
 |-- snowflake/
 |   |-- monitoring/
 |   |   |-- 04_data_profiling.sql
+|   |   |-- 05_dbt_refresh_control.sql
 |   |   |-- snowpipe_monitoring.sql
 |   |-- semantic/
 |       |-- 01_commercial_analytics.sql
@@ -1041,7 +1065,8 @@ travel-data-platform/
 
 | Component | Responsibility |
 |---|---|
-| .github/workflows | Automated CI/CD workflows |
+| .github/workflows | Automated CI/CD and scheduled refresh workflows |
+| orchestration/refresh_gold.py | Conditional production dbt refresh and checkpoint management |
 | dbt/models | Transformation and analytical models |
 | dbt/tests | Custom data quality tests |
 | dbt/scripts | Transformation development utilities |
@@ -1077,7 +1102,7 @@ The platform has successfully implemented automated ingestion, isolated transfor
 | Data Tests | 387 |
 | Source Definitions | 15 |
 
-### 16.3 Latest Production Build
+### 16.3 Recorded Production Build (Day 5)
 
 | Result | Count |
 |---|---:|
@@ -1106,6 +1131,7 @@ Warning-level results remain visible for data quality investigation.
 - Controlled synthetic data quality scenarios.
 - Native semantic view and governed metrics in DEV.
 - Natural language analytics with initial SQL reconciliation.
+- Conditional scheduled Gold refresh with file-level checkpoint tracking.
 
 ---
 
@@ -1145,7 +1171,7 @@ dbt documentation, source definitions and model descriptions support discoverabi
 
 ### Cost Awareness
 
-The platform uses shared Bronze source access and separates transformation environments to reduce unnecessary raw data duplication.
+The platform uses shared Bronze source access and separates transformation environments to reduce unnecessary raw data duplication. Conditional refresh checks also avoid unnecessary dbt builds when no new ingestion events are detected.
 
 ---
 
@@ -1238,7 +1264,7 @@ and should be resolved before production deployment.
 | Data quality results | Dedicated results table | Implemented |
 | Transformation validation | dbt models and tests | Implemented |
 | CI/CD monitoring | GitHub Actions logs | Implemented |
-| Automated freshness monitoring | Future enhancement | Planned |
+| Ingestion-driven refresh detection | File-level tracking and refresh status view | Implemented |
 | Compute and cost monitoring | Future enhancement | Planned |
 | Centralised observability | Future enhancement | Planned |
 | Automated operational alerting | Future enhancement | Planned |
@@ -1247,12 +1273,12 @@ and should be resolved before production deployment.
 
 Potential operational improvements include:
 
-- Automated source freshness checks.
+- Source freshness SLA checks and alerts (beyond ingestion-driven refresh detection).
 - Centralised operational monitoring views.
 - Automated failure notifications.
 - Data quality trend dashboards.
 - Warehouse usage and cost monitoring.
-- Pipeline scheduling and orchestration.
+- Harden interrupted-run recovery and operational scheduling.
 - Operational incident management procedures.
 
 The current implementation provides a foundational
@@ -1261,7 +1287,87 @@ infrastructure complexity.
 
 ---
 
-## 19. Project Status
+## 19. Data Freshness and Pipeline Orchestration
+
+### 19.1 Refresh Architecture
+
+Snowpipe automatically loads incoming files into Bronze. Silver views reflect source changes at query time, while materialised Gold tables require a dbt build. A daily conditional refresh closes this gap without rebuilding Gold unnecessarily.
+
+```mermaid
+flowchart TD
+    A[S3] --> B[Snowpipe] --> C[Bronze] --> D[Silver views]
+    C --> E[COPY_HISTORY]
+    E --> F[Unprocessed file detection]
+    G[GitHub Actions schedule or manual dispatch] --> H[Python orchestration]
+    F --> H
+    H --> I{Refresh required or forced?}
+    I -->|No| J[Record SKIPPED]
+    I -->|Yes| K[dbt build PROD]
+    D --> K
+    K --> L{Build successful?}
+    L -->|Yes| M[Update Gold and commit checkpoints]
+    L -->|No| N[Record FAILED and retain pending files]
+```
+
+### 19.2 Refresh Control Objects
+
+Implemented in `snowflake/monitoring/05_dbt_refresh_control.sql` in `TRAVEL_DB.MONITORING`.
+
+| Object | Responsibility |
+|---|---|
+| `DBT_REFRESH_CONTROL` | Pipeline status, timestamps and messages |
+| `BRONZE_INGESTION_HISTORY` | Secure view of Bronze file ingestion metadata |
+| `DBT_PROCESSED_FILES` | Successfully processed table, filename and load-time combinations |
+| `DBT_UNPROCESSED_FILES` | Loaded or partially loaded events with rows that have not been checkpointed |
+| `DBT_REFRESH_STATUS` | Pending file count and refresh-required decision |
+
+The file-event approach avoids relying solely on a maximum timestamp, allowing late-arriving metadata to be detected. The production role has scoped access to the monitoring objects.
+
+### 19.3 Execution and Scheduling
+
+- Python entry point: `orchestration/refresh_gold.py`.
+- Workflow: `.github/workflows/travel-scheduled-refresh.yml`.
+- Daily schedule: `30 19 * * *` UTC (06:30 Melbourne daylight time; 05:30 standard time).
+- Manual execution: GitHub Actions → Travel Data Platform Scheduled Refresh → Run workflow on `main`.
+- Optional `force_refresh` input bypasses the no-new-data decision.
+- Production CD and refresh workflows share the `travel-platform-prod` concurrency group.
+
+The script checks pending ingestion events, runs `dbt build --profiles-dir cd --target prod` when required, and commits the captured file checkpoints only after a successful build. Failed builds retain pending events for retry. A no-change run records `SKIPPED`. Production authentication uses the existing service account and GitHub secrets.
+
+### 19.4 End-to-End Validation
+
+| Scenario | Result |
+|---|---|
+| Initial refresh | Passed |
+| No new data — skip build | Passed |
+| Automatic Snowpipe ingestion | Passed |
+| Invalid booking and booking-item identifiers rejected by Silver | Passed |
+| Corrected records propagated to Bronze and Silver | Passed |
+| New ingestion event detection and conditional refresh | Passed |
+| Gold metric reconciliation | Passed |
+| Successful checkpoint advancement | Passed |
+
+The initial synthetic test used identifiers that violated existing Silver regex rules. Both files were ingested and checkpointed, but Gold correctly remained unchanged. A second test used compliant, unused identifiers and successfully propagated through the pipeline without modifying validation logic.
+
+| Metric | Before | After | Change |
+|---|---:|---:|---:|
+| Gold booking items | 4,452 | 4,453 | +1 |
+| Gold gross sales (AUD) | 11,468,646.04 | 11,473,176.54 | +4,530.50 |
+
+These are observed synthetic-data test results. The final screenshot confirms SUCCESS and an advanced checkpoint; the final pending-file count was not visible.
+
+### 19.5 Operational Limitations
+
+- ACCOUNT_USAGE metadata latency can delay detection; this is daily conditional refresh, not real-time Gold processing.
+- Direct Bronze SQL modifications are not detected by file history; use a controlled forced refresh when needed.
+- Partially loaded files require investigation even if some rows are processed.
+- Gold rebuilds are not atomic across all dbt models; checkpoint updates are transactional.
+- Interrupted runs left in RUNNING status require additional recovery hardening.
+- Manual dispatch has validated the scheduled workflow logic; unattended daily execution has not yet been verified.
+
+---
+
+## 20. Project Status
 
 | Component | Status |
 |---|---|
@@ -1282,11 +1388,13 @@ infrastructure complexity.
 | Continuous Deployment | Implemented |
 | CI Failure Validation | Implemented |
 | Basic Monitoring and Observability | Implemented |
+| Conditional Gold Refresh | Implemented and manually validated |
+| Unattended Daily Execution | Configured; not yet verified |
 | Advanced Observability and Alerting | Future Enhancement |
 | Semantic View | Implemented in DEV |
 | Cortex Analyst | Implemented in DEV |
 | Initial AI Functional Testing | Five passed; one partially verified |
-| Formal AI Evaluation and Verified Queries | Planned — Day 8 |
+| Formal AI Evaluation and Verified Queries | Planned — Day 9 |
 | Semantic CI/CD and PROD Deployment | Future Enhancement |
 
 ---
@@ -1302,17 +1410,18 @@ infrastructure complexity.
 | 5 | Environment management and CI/CD hardening | Completed |
 | 6 | Lightweight monitoring and observability | Completed |
 | 7 | Semantic Views and Cortex Analyst | DEV implementation completed; one functional test partially verified |
-| 8 | AI accuracy evaluation and documentation | Planned |
+| 8 | Data freshness and conditional pipeline orchestration | Implemented; manual end-to-end validation passed |
+| 9 | AI accuracy evaluation and verified queries | Planned |
 
 The roadmap records learning milestones; Section 12 describes the recommended environment-first implementation sequence.
 
 ---
 
-## 20. Conclusion
+## 21. Conclusion
 
 The Travel Data Platform demonstrates the design and implementation of an end-to-end cloud data engineering solution using modern data engineering technologies.
 
-The project combines automated ingestion, modular ELT transformations, dimensional modelling, data quality management, environment isolation and CI/CD into a unified architecture.
+The project combines automated ingestion, modular ELT transformations, dimensional modelling, data quality management, environment isolation CI/CD and ingestion-driven conditional refresh into a unified architecture.
 
 Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics. The DEV semantic layer extends these foundations to governed natural language analytics, with formal AI evaluation and production semantic deployment remaining future work.
 
