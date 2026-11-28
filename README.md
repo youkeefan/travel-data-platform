@@ -1005,7 +1005,9 @@ Five of six functional tests are fully verified. The remaining test is partially
 
 ### 14.6 Additional DEV Semantic Work
 
-Customer, financial and loyalty semantic views have also been created in DEV, with individual Playground checks reported complete. Their SQL definitions and a four-tool Cortex Agent definition are pending repository integration. Agent preview is blocked by trial-account access restrictions; the agent is not published. Formal reconciliation and benchmark evaluation remain outstanding.
+Customer, financial and loyalty semantic views have also been created in DEV, with individual Playground functional checks completed. All four semantic view SQL definitions and the unified Cortex Agent configuration are now version-controlled and integrated into the main branch.
+
+Agent preview remains blocked by Snowflake trial-account access restrictions, and the Agent is not published. Formal metric reconciliation, benchmark evaluation and verified query optimisation remain outstanding.
 
 ### 14.7 Limitations and Next Steps
 
@@ -1049,6 +1051,10 @@ travel-data-platform/
 |   |   |-- snowpipe_monitoring.sql
 |   |-- semantic/
 |       |-- 01_commercial_analytics.sql
+|       |-- 02_customer_analytics.sql
+|       |-- 03_financial_analytics.sql
+|       |-- 04_loyalty_analytics.sql
+|       |-- 05_travel_analytics_agent.sql
 |
 |-- data/
 |-- data_clean/
