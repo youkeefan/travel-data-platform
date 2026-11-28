@@ -2,7 +2,7 @@
 
 An end-to-end cloud data engineering platform designed to simulate a modern travel e-commerce data ecosystem using AWS, Snowflake, dbt, Python and GitHub Actions.
 
-The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control CI/CD deployment and conditional scheduled Gold refreshes. The platform also includes a DEV-only Snowflake semantic layer and Cortex Analyst integration for natural language analytics.
+The platform demonstrates environment isolation, automated data ingestion, layered data transformation, dimensional modelling, data quality management, role-based access control, CI/CD deployment and conditional scheduled Gold refreshes. In DEV, the Travel Intelligence Assistant runs in Streamlit in Snowflake and uses the Cortex Analyst REST API to answer natural-language questions across four governed business domains.
 
 This README follows a recommended engineering lifecycle rather than the historical learning sequence. Activities such as security, testing, monitoring and documentation evolve iteratively throughout delivery.
 
@@ -79,7 +79,11 @@ Define business owners, source contracts, expected volumes, freshness targets an
 | VS Code | Local development environment |
 | YAML | Configuration, source definitions and data tests |
 | Snowflake Semantic Views | Governed business dimensions, facts and metrics |
-| Snowflake Cortex Analyst | Natural language to SQL analytics |
+| Snowflake Cortex Analyst REST API | Semantic view selection and natural-language-to-SQL generation |
+| Streamlit in Snowflake | Snowflake-hosted conversational analytics interface |
+| Snowpark Python | Snowflake session and SQL execution |
+| Requests | Cortex Analyst REST API calls |
+| pandas | Query result processing and presentation |
 
 ---
 
@@ -109,9 +113,13 @@ flowchart TD
     T[GitHub Actions daily schedule] --> S
     S -->|dbt build when required| H
     H --> I
-    H --> O[Semantic View - DEV]
-    O --> P[Cortex Analyst]
-    P --> Q[Natural Language Analytics]
+    H --> O[Four semantic views in DEV]
+    O --> P[Cortex Analyst REST API]
+    P -->|Generated SQL or clarification| Q[Travel Intelligence Assistant in Streamlit]
+    U[Business users] <-->|Questions and results| Q
+    Q -->|Conversation and candidate views| P
+    Q -->|Snowpark SQL execution| H
+    V[TRAVEL_APP_ROLE] -.-> Q
 
     J[GitHub Repository]
     K[GitHub Actions CI/CD]
@@ -137,7 +145,7 @@ flowchart TD
 - Automated validation and deployment
 - Reproducibility and traceability
 
-The platform follows a three-layer Bronze, Silver and Gold architecture.
+The platform follows a three-layer Bronze, Silver and Gold architecture. The diagrams show logical data and analytics flow. GitHub Actions supports dbt validation, deployment and conditional refresh. Data quality, monitoring, environment isolation and RBAC apply across the platform.
 
 ```mermaid
 flowchart LR
@@ -189,7 +197,7 @@ The analytical layer supports use cases including:
 
 Establish version control, directory conventions, Python virtual environments, dependencies, dbt project configuration and documentation before pipeline development.
 
-The following represents the main project components.
+The tree includes the main repository components and three app files prepared locally and pending merge. The four semantic view definitions and Cortex Agent configuration are already integrated into main.
 
 ```text
 travel-data-platform/
@@ -220,11 +228,17 @@ travel-data-platform/
 |   |   |-- 05_dbt_refresh_control.sql
 |   |   |-- snowpipe_monitoring.sql
 |   |-- semantic/
-|       |-- 01_commercial_analytics.sql
-|       |-- 02_customer_analytics.sql
-|       |-- 03_financial_analytics.sql
-|       |-- 04_loyalty_analytics.sql
-|       |-- 05_travel_analytics_agent.sql
+|   |   |-- 01_commercial_analytics.sql
+|   |   |-- 02_customer_analytics.sql
+|   |   |-- 03_financial_analytics.sql
+|   |   |-- 04_loyalty_analytics.sql
+|   |   |-- 05_travel_analytics_agent.sql
+|   |-- security/
+|       |-- streamlit_app_role.sql
+|
+|-- streamlit/
+|   |-- streamlit_app.py
+|   |-- requirements.txt
 |
 |-- data/
 |-- data_clean/
@@ -248,7 +262,10 @@ travel-data-platform/
 | dbt/scripts | Transformation development utilities |
 | ingestion/src | Source file ingestion utilities |
 | snowflake/monitoring | Ingestion monitoring, data profiling and data quality evaluation |
-| snowflake/semantic | Version-controlled semantic views and business metric definitions |
+| snowflake/semantic | Version-controlled semantic views, metric definitions and Cortex Agent configuration |
+| snowflake/security/streamlit_app_role.sql | DEV app role and grants, prepared locally |
+| streamlit/streamlit_app.py | Travel Intelligence Assistant source, prepared locally |
+| streamlit/requirements.txt | App dependency list, prepared locally |
 | data | Generated source datasets |
 | data_clean | Clean source data backups |
 | docs | Data quality manifests and project documentation |
@@ -277,7 +294,8 @@ The platform uses three isolated Snowflake environments to separate development,
 | Bronze | Shared source access | Shared source access | Physical source tables |
 | Silver | Views | Views | Views |
 | Gold | Tables | Tables | Tables |
-| Semantic | Implemented | Not deployed | Not deployed |
+| Semantic | Four views deployed | Not deployed | Not deployed |
+| Apps | Travel Intelligence Assistant deployed manually in APPS | Not deployed | Not deployed |
 | Monitoring | Development utilities | Not deployed | Refresh control and ingestion tracking |
 
 DEV and CI use controlled access to the existing Bronze source data while maintaining isolated transformation outputs.
@@ -298,7 +316,7 @@ flowchart LR
     A --> B --> C --> D --> E --> F
 ```
 
-dbt transformation changes are developed and tested in DEV, automatically validated in CI and deployed to PROD following a successful merge. Semantic view SQL is version-controlled separately and is not yet included in automated deployment.
+dbt transformation changes are developed and tested in DEV, automatically validated in CI and deployed to PROD following a successful merge. Semantic view SQL is version-controlled separately. The semantic views and Streamlit app were deployed manually in DEV. CI and PROD deployment of these objects is pending.
 
 ---
 
@@ -348,13 +366,37 @@ Examples include:
 - AWS access credentials.
 - Environment-specific connection settings.
 
+### 7.4 Travel Intelligence Assistant Role
+
+The DEV app uses `TRAVEL_APP_ROLE`. The role setup is captured in `snowflake/security/streamlit_app_role.sql` and assumes that the four DEV Gold marts and semantic views already exist.
+
+| Resource | Grant |
+|---|---|
+| Role hierarchy | `TRAVEL_APP_ROLE` granted to `SYSADMIN` |
+| Cortex | `SNOWFLAKE.CORTEX_USER` database role |
+| Database | `USAGE` on `TRAVEL_DEV_DB` |
+| Schemas | `USAGE` on `GOLD`, `SEMANTIC` and `APPS` |
+| Compute | `USAGE` on `COMPUTE_WH` and `SYSTEM_COMPUTE_POOL_CPU` |
+| Four semantic views in Section 16 | `SELECT` and `REFERENCES` |
+| Four Gold marts in Section 16 | `SELECT` |
+| Application schema | `CREATE STREAMLIT` on `TRAVEL_DEV_DB.APPS` |
+
+The role has read-only access to the four business marts and permission to create Streamlit objects in `APPS`. The role setup grants no Bronze or Silver access and no business-data write privileges.
+
+| Representative DEV security check | Recorded outcome |
+|---|---|
+| Read authorised business data through the app | Succeeded during deployment smoke testing |
+| Read Bronze data under `TRAVEL_APP_ROLE` | Denied |
+| Read Silver data under `TRAVEL_APP_ROLE` | Denied |
+| Update the tested Gold mart under `TRAVEL_APP_ROLE` | Denied |
+
 ---
 
 ## 8. CI/CD Foundation
 
 CI/CD is established early in the project lifecycle and expanded as transformation models and data quality requirements grow.
 
-GitHub Actions automates validation and production deployment.
+GitHub Actions automates dbt validation and production deployment. The DEV semantic views and application were deployed manually. Automated deployment for both remains pending.
 
 ### 8.1 Continuous Integration
 
@@ -900,7 +942,7 @@ The production deployment command is:
 dbt build --profiles-dir cd --target prod
 ```
 
-Production models are deployed into TRAVEL_DB.
+Production dbt models are deployed into `TRAVEL_DB`. The four semantic views and Travel Intelligence Assistant are deployed in DEV. Their PROD deployment and release automation remain pending.
 
 ---
 
@@ -913,11 +955,25 @@ The native Snowflake semantic layer extends the existing Gold layer without dupl
 ```mermaid
 flowchart LR
     A[GOLD.FACT_BOOKING_ITEMS] --> B[GOLD.MART_COMMERCIAL_DAILY]
-    B --> C[SEMANTIC.COMMERCIAL_ANALYTICS]
-    C --> D[Cortex Analyst]
-    E[Business Question] --> D
-    D --> F[Generated SQL and Results]
+    B --> C[COMMERCIAL_ANALYTICS]
+    M1[GOLD.MART_CUSTOMER_360] --> C1[CUSTOMER_ANALYTICS]
+    M2[GOLD.MART_FINANCIAL_DAILY] --> C2[FINANCIAL_ANALYTICS]
+    M3[GOLD.MART_LOYALTY_MONTHLY] --> C3[LOYALTY_ANALYTICS]
+    C & C1 & C2 & C3 --> D[Cortex Analyst REST API]
+    E[Business user] <-->|Question and results| S[Travel Intelligence Assistant]
+    S -->|Messages and four candidate views| D
+    D -->|SQL for selected view or clarification| S
+    S -->|Execute SQL via Snowpark| G[Authorised Gold marts]
 ```
+
+| Domain | Semantic view in `TRAVEL_DEV_DB.SEMANTIC` | Source mart in `TRAVEL_DEV_DB.GOLD` | Definition in `snowflake/semantic/` |
+|---|---|---|---|
+| Commercial | `COMMERCIAL_ANALYTICS` | `MART_COMMERCIAL_DAILY` | `01_commercial_analytics.sql` |
+| Customer | `CUSTOMER_ANALYTICS` | `MART_CUSTOMER_360` | `02_customer_analytics.sql` |
+| Financial | `FINANCIAL_ANALYTICS` | `MART_FINANCIAL_DAILY` | `03_financial_analytics.sql` |
+| Loyalty | `LOYALTY_ANALYTICS` | `MART_LOYALTY_MONTHLY` | `04_loyalty_analytics.sql` |
+
+The commercial view was the first view reconciled in DEV. Its implementation details follow.
 
 | Property | Definition |
 |---|---|
@@ -965,7 +1021,7 @@ USE SCHEMA SEMANTIC;
 
 Execute the version-controlled SQL definition when intentionally creating or replacing the view. Do not replace the existing object merely to reproduce the initial tests.
 
-Cortex Analyst is accessed through Snowsight Workspaces using the linked semantic view and Playground. The development role is used for testing. No external LLM API key or separate application is required for this implementation.
+Individual semantic views can be tested through the Cortex Analyst Playground in Snowsight Workspaces using the development role. The deployed Streamlit app uses the Cortex Analyst REST API and the dedicated application role described in Section 7.
 
 ### 16.4 Semantic Metric Reconciliation
 
@@ -998,13 +1054,25 @@ Five of six functional tests are fully verified. The remaining test is partially
 
 Customer, financial and loyalty semantic views have also been created in DEV, with individual Playground checks reported complete. All four semantic view SQL definitions and the four-tool Cortex Agent configuration are integrated into main. Agent preview is blocked by trial-account access restrictions; the agent is not published. Formal reconciliation and benchmark evaluation remain outstanding.
 
-### 16.7 Limitations and Next Steps
+### 16.7 Travel Intelligence Assistant
+
+The Travel Intelligence Assistant is deployed manually in `TRAVEL_DEV_DB.APPS` using Streamlit in Snowflake. It provides a single chat interface for commercial, customer, financial and loyalty questions.
+
+1. Streamlit retains the conversation and sends the question and conversation context to the Cortex Analyst REST API with the four candidate semantic views.
+2. Cortex Analyst selects a single eligible semantic view for the request and returns generated SQL or a response that helps the user clarify or rephrase the question.
+3. When SQL is returned, the app executes it in Snowflake through Snowpark with the application role. It exposes the generated SQL and presents query results using formatted KPIs, tables and charts as appropriate.
+
+The app supports follow-up questions, metric selection, filters and aggregation within a selected domain. Cross-mart orchestration is pending. The Streamlit app uses the Analyst API directly. The separately version-controlled Cortex Agent configuration is unpublished and its preview is blocked by trial-account restrictions.
+
+### 16.8 Limitations and Next Steps
 
 - Semantic view deployment is currently DEV-only; CI and PROD semantic deployment are not implemented.
 - Existing GitHub Actions workflows validate and deploy dbt models, not semantic view SQL.
 - The portable SQL definition has not yet been tested in CI or PROD.
 - The commercial semantic view does not support unique customer counts or all loyalty and financial use cases.
-- Formal benchmark evaluation, verified query optimisation and regression testing are planned.
+- Formal cross-domain metric reconciliation, benchmark evaluation, verified queries, query optimisation and regression testing are planned.
+- Automated application deployment and PROD deployment are pending.
+- The app files are prepared locally and their merge is pending.
 
 ---
 
@@ -1151,7 +1219,13 @@ GitHub Actions executes the CI workflow.
 
 Review validation results before merging.
 
-Following a successful merge, the CD workflow deploys the updated dbt models to PROD. Semantic view deployment remains manual and DEV-only.
+Following a successful merge, the CD workflow deploys the updated dbt models to PROD. Semantic view and app deployment remain manual and DEV-only.
+
+### 17.9 Streamlit Source and Runtime
+
+The app source is in `streamlit/streamlit_app.py`. The local dependency list in `streamlit/requirements.txt` includes `streamlit`, `snowflake-snowpark-python`, `requests` and `pandas`. Versions are currently unpinned. The app relies on the Snowflake-managed session and authentication in its deployed runtime.
+
+From the repository root, check Python syntax with `python -m py_compile streamlit/streamlit_app.py`. Runtime verification takes place in Streamlit in Snowflake. For DEV smoke testing, open the deployed app in `TRAVEL_DEV_DB.APPS` and exercise representative questions across the four domains, a follow-up and an unsupported question.
 
 ---
 
@@ -1202,9 +1276,22 @@ Warning-level results remain visible for data quality investigation.
 - Automated data quality testing.
 - Role-based access control.
 - Controlled synthetic data quality scenarios.
-- Native semantic view and governed metrics in DEV.
+- Four native semantic views and governed metrics in DEV.
+- DEV Streamlit deployment with API routing, multi-turn questions and restricted Gold access.
 - Natural language analytics with initial SQL reconciliation.
 - Conditional scheduled Gold refresh with file-level checkpoint tracking.
+
+### 18.5 DEV Application Validation
+
+| Smoke test | Recorded outcome |
+|---|---|
+| Open the deployed app in DEV and run a representative question | Passed |
+| Route representative questions across the four semantic domains | Passed |
+| Retain context for a follow-up question | Passed |
+| Handle an unsupported question | Passed |
+| Validate representative role restrictions | Passed for the Bronze, Silver and Gold checks in Section 7 |
+
+These checks cover deployment and representative app behaviour. The initial commercial SQL reconciliation and Analyst Playground results in Section 16 are reported separately. Formal AI evaluation remains pending.
 
 ---
 
@@ -1275,6 +1362,14 @@ The platform uses shared Bronze source access and separates transformation envir
 | Four semantic views | Implemented in DEV; SQL integrated into main |
 | Cortex Agent | Configuration integrated; unpublished; trial blocks runtime testing |
 | Cortex Analyst | Implemented in DEV |
+| Travel Intelligence Assistant | Deployed manually in DEV and smoke tested |
+| Analyst REST API routing | Implemented with automatic single-view selection across four domains |
+| Multi-turn context and unsupported question handling | Implemented and functionally tested in DEV |
+| App role and representative access checks | Implemented and tested in DEV |
+| Streamlit source, dependencies and role SQL | Prepared locally. Merge pending |
+| Cross-mart orchestration | Pending |
+| PROD application deployment | Pending |
+| Automated application deployment | Pending |
 | Initial AI Functional Testing | Five passed; one partially verified |
 | Formal AI Evaluation and Verified Queries | Planned |
 | Semantic CI/CD and PROD Deployment | Future Enhancement |
@@ -1285,7 +1380,8 @@ The platform uses shared Bronze source access and separates transformation envir
 - Incremental transformations, API ingestion and controlled backfill.
 - Interrupted-run recovery, freshness SLAs and automated alerting.
 - Schema evolution, infrastructure as code and cost monitoring.
-- Semantic CI/CD and production deployment.
+- Cross-mart orchestration with reconciliation of metrics across domains.
+- Semantic and application deployment automation and promotion to PROD.
 
 These are proposed enhancements, not implemented capabilities.
 
@@ -1297,7 +1393,7 @@ The Travel Data Platform demonstrates the design and implementation of an end-to
 
 The project combines automated ingestion, modular ELT transformations, dimensional modelling, data quality management, environment isolation, CI/CD and ingestion-driven conditional refresh into a unified architecture.
 
-Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics. The DEV semantic layer extends these foundations to governed natural language analytics, with formal AI evaluation and production semantic deployment remaining future work.
+Its design emphasises engineering reliability, maintainability, security and reproducibility while supporting scalable downstream business analytics. Four DEV semantic views and the deployed Travel Intelligence Assistant extend these foundations to governed natural-language analytics. The three app files are prepared locally and pending merge. Formal AI evaluation, cross-mart orchestration, PROD semantic and application deployment, and automated application deployment remain pending.
 
 ---
 
