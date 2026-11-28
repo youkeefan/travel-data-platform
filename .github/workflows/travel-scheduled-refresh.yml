@@ -1,0 +1,73 @@
+
+name: Travel Data Platform Scheduled Refresh
+
+on:
+  schedule:
+    - cron: '30 19 * * *'
+
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: 'Refresh even if no new data is detected'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: travel-platform-prod
+  cancel-in-progress: false
+
+jobs:
+  refresh-gold:
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment: production
+
+    env:
+      DBT_RUN_CACHE_DISABLED: "true"
+      DBT_ENV_SECRET_PROD_PASSPHRASE: ${{ secrets.SNOWFLAKE_PROD_KEY_PASSPHRASE }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip install dbt-core==1.12.7 dbt-snowflake==1.12.5
+
+      - name: Configure Snowflake private key
+        env:
+          SNOWFLAKE_PROD_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PROD_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$SNOWFLAKE_PROD_PRIVATE_KEY" > "$RUNNER_TEMP/travel_prod_private.p8"
+          echo "SNOWFLAKE_PROD_PRIVATE_KEY_PATH=$RUNNER_TEMP/travel_prod_private.p8" >> "$GITHUB_ENV"
+
+      - name: Install dbt packages
+        working-directory: dbt
+        run: dbt deps --profiles-dir cd
+
+      - name: Conditional production refresh
+        env:
+          FORCE_REFRESH: ${{ inputs.force_refresh }}
+        run: |
+          if [ "$FORCE_REFRESH" = "true" ]; then
+            python orchestration/refresh_gold.py --force
+          else
+            python orchestration/refresh_gold.py
+          fi
+
+      - name: Remove private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/travel_prod_private.p8"
