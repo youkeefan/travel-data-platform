@@ -1,0 +1,141 @@
+
+CREATE OR REPLACE SEMANTIC VIEW SEMANTIC.LOYALTY_ANALYTICS
+
+TABLES (
+    LOYALTY AS GOLD.MART_LOYALTY_MONTHLY
+        PRIMARY KEY (LOYALTY_MONTHLY_KEY)
+        COMMENT = 'Monthly customer-level loyalty activity based on valid points movements. Includes customers with recorded loyalty activity.'
+)
+
+FACTS (
+    LOYALTY.EVENT_COUNT AS LOYALTY_EVENT_COUNT,
+    LOYALTY.EARNED_POINTS AS POINTS_EARNED,
+    LOYALTY.REDEEMED_POINTS AS POINTS_REDEEMED,
+    LOYALTY.EXPIRED_POINTS AS POINTS_EXPIRED,
+    LOYALTY.ADJUSTED_POINTS AS POINTS_ADJUSTED,
+    LOYALTY.REVERSED_POINTS AS POINTS_REVERSED,
+    LOYALTY.POINTS_MOVEMENT AS NET_POINTS_MOVEMENT
+)
+
+DIMENSIONS (
+    LOYALTY.MONTH_START_DATE AS MONTH_START_DATE,
+    LOYALTY.YEAR_MONTH AS YEAR_MONTH,
+    LOYALTY.CALENDAR_YEAR AS CALENDAR_YEAR,
+    LOYALTY.CALENDAR_QUARTER AS CALENDAR_QUARTER,
+    LOYALTY.MONTH_NUMBER AS MONTH_NUMBER,
+    LOYALTY.FINANCIAL_YEAR AS FINANCIAL_YEAR,
+    LOYALTY.FINANCIAL_QUARTER AS FINANCIAL_QUARTER,
+
+    LOYALTY.CUSTOMER_KEY AS CUSTOMER_KEY,
+
+    LOYALTY.TIER_NAME AS TIER_NAME
+        COMMENT = 'Customer tier from the joined customer dimension, not necessarily the tier at the time of the loyalty event.',
+
+    LOYALTY.CUSTOMER_STATUS AS CUSTOMER_STATUS,
+    LOYALTY.COUNTRY_CODE AS COUNTRY_CODE,
+    LOYALTY.AGE_BAND AS AGE_BAND,
+    LOYALTY.TENURE_BAND AS TENURE_BAND,
+
+    LOYALTY.HAS_EARNED AS HAS_EARNED,
+    LOYALTY.HAS_REDEEMED AS HAS_REDEEMED,
+    LOYALTY.HAS_EXPIRED AS HAS_EXPIRED
+)
+
+METRICS (
+    LOYALTY.M_TOTAL_LOYALTY_EVENTS AS
+        SUM(LOYALTY.EVENT_COUNT),
+
+    LOYALTY.M_TOTAL_POINTS_EARNED AS
+        SUM(LOYALTY.EARNED_POINTS)
+        WITH SYNONYMS = ('points earned', 'points issued'),
+
+    LOYALTY.M_TOTAL_POINTS_REDEEMED AS
+        SUM(LOYALTY.REDEEMED_POINTS)
+        WITH SYNONYMS = ('points burned', 'points spent'),
+
+    LOYALTY.M_TOTAL_POINTS_EXPIRED AS
+        SUM(LOYALTY.EXPIRED_POINTS),
+
+    LOYALTY.M_TOTAL_POINTS_ADJUSTED AS
+        SUM(LOYALTY.ADJUSTED_POINTS),
+
+    LOYALTY.M_TOTAL_POINTS_REVERSED AS
+        SUM(LOYALTY.REVERSED_POINTS),
+
+    LOYALTY.M_NET_POINTS_MOVEMENT AS
+        SUM(LOYALTY.POINTS_MOVEMENT)
+        COMMENT = 'Net signed points movement during the selected period, not the outstanding points balance.',
+
+    LOYALTY.M_ACTIVE_CUSTOMERS AS
+        COUNT(DISTINCT LOYALTY.CUSTOMER_KEY)
+        COMMENT = 'Distinct customers with recorded loyalty activity during the selected period.',
+
+    LOYALTY.M_EARNING_CUSTOMERS AS
+        COUNT(DISTINCT CASE
+            WHEN LOYALTY.HAS_EARNED
+            THEN LOYALTY.CUSTOMER_KEY
+        END),
+
+    LOYALTY.M_REDEEMING_CUSTOMERS AS
+        COUNT(DISTINCT CASE
+            WHEN LOYALTY.HAS_REDEEMED
+            THEN LOYALTY.CUSTOMER_KEY
+        END),
+
+    LOYALTY.M_CUSTOMERS_WITH_EXPIRED_POINTS AS
+        COUNT(DISTINCT CASE
+            WHEN LOYALTY.HAS_EXPIRED
+            THEN LOYALTY.CUSTOMER_KEY
+        END),
+
+    LOYALTY.M_EARN_TO_BURN_RATIO AS
+        SUM(LOYALTY.EARNED_POINTS)
+        / NULLIF(SUM(LOYALTY.REDEEMED_POINTS), 0)
+        COMMENT = 'Total points earned divided by total points redeemed.',
+
+    LOYALTY.M_REDEMPTION_TO_EARN_RATIO AS
+        SUM(LOYALTY.REDEEMED_POINTS)
+        / NULLIF(SUM(LOYALTY.EARNED_POINTS), 0)
+        COMMENT = 'Period points redeemed divided by period points earned. Not a cohort-based redemption rate.',
+
+    LOYALTY.M_EXPIRY_TO_EARN_RATIO AS
+        SUM(LOYALTY.EXPIRED_POINTS)
+        / NULLIF(SUM(LOYALTY.EARNED_POINTS), 0)
+        COMMENT = 'Period points expired divided by period points earned. Not a cohort-based breakage rate.',
+
+    LOYALTY.M_CUSTOMER_REDEMPTION_RATE AS
+        COUNT(DISTINCT CASE
+            WHEN LOYALTY.HAS_REDEEMED
+            THEN LOYALTY.CUSTOMER_KEY
+        END)
+        / NULLIF(
+            COUNT(DISTINCT LOYALTY.CUSTOMER_KEY), 0
+        )
+        COMMENT = 'Proportion of loyalty-active customers who redeemed points during the selected period.',
+
+    LOYALTY.M_AVERAGE_POINTS_EARNED_PER_EARNER AS
+        SUM(LOYALTY.EARNED_POINTS)
+        / NULLIF(
+            COUNT(DISTINCT CASE
+                WHEN LOYALTY.HAS_EARNED
+                THEN LOYALTY.CUSTOMER_KEY
+            END), 0
+        ),
+
+    LOYALTY.M_AVERAGE_POINTS_REDEEMED_PER_REDEEMER AS
+        SUM(LOYALTY.REDEEMED_POINTS)
+        / NULLIF(
+            COUNT(DISTINCT CASE
+                WHEN LOYALTY.HAS_REDEEMED
+                THEN LOYALTY.CUSTOMER_KEY
+            END), 0
+        ),
+
+    LOYALTY.M_AVERAGE_EVENTS_PER_ACTIVE_CUSTOMER AS
+        SUM(LOYALTY.EVENT_COUNT)
+        / NULLIF(
+            COUNT(DISTINCT LOYALTY.CUSTOMER_KEY), 0
+        )
+)
+
+COMMENT = 'Business semantic layer for loyalty points currency management, customer engagement, earning, redemption and expiry analysis.';
